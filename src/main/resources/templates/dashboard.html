@@ -147,7 +147,7 @@
                                 <form action="#" th:action="@{/dashboard/createOptionsOrder}" method="post">
 
                                     <td width="100px">
-                                        Security: <input type="text" th:name="ticker" th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.ticker}"/>
+                                        Security: <input type="text" disabled="true" th:name="ticker" th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.ticker}"/>
                                     </td>
 
                                     <td width="100px">
@@ -197,35 +197,34 @@
                             <thead>
                                 <td width="100px">Order Id</td>
                                 <td width="100px">Parent Order Id</td>
-                                <td width="100px">Quantity</td>
-                                <td width="100px">Target Price</td>
                                 <td width="100px">Strike Price</td>
                                 <td width="100px">Expiry Date</td>
                                 <td width="100px">Option Type</td>
+                                <td width="100px">Quantity</td>
+                                <td width="100px">Target Price</td>
                             </thead>
                             <tr th:each="orderModel : ${tickerFormsGroupMap.get(tickerForm).orderModelDtoList}">
                                 <form action="#" th:action="@{/dashboard/updateSetOrder}" method="post">
                                     <td width="100px">
-                                        <input type="text" th:name="orderId" th:value="${orderModel.updateOrderForm.orderId}"/>
+                                        <input type="text" disabled="true" th:name="orderId" th:value="${orderModel.updateOrderForm.orderId}"/>
                                     </td>
-                                    <td width="100px" th:name="parentOrderId" th:text="${orderModel.updateOrderForm.parentOrderId}"> </td>
-<!--                                    <td width="100px">-->
-<!--                                        <input type="text" th:name="parentOrderId" th:value="${orderModel.updateOrderForm.parentOrderId}"/>-->
-<!--                                    </td>-->
+                                    <td width="100px">
+                                        <input type="text" disabled="true" th:name="parentOrderId" th:value="${orderModel.updateOrderForm.parentOrderId}"/>
+                                    </td>
+                                    <td width="100px">
+                                        <input type="text" disabled="true" th:name="targetPrice" th:value="${orderModel.updateOrderForm.optionStrikePrice}"/>
+                                    </td>
+                                    <td width="100px">
+                                        <input type="text" disabled="true" th:name="targetPrice" th:value="${orderModel.updateOrderForm.optionExpiryDate}"/>
+                                    </td>
+                                    <td width="100px">
+                                        <input type="text" disabled="true" th:name="targetPrice" th:value="${orderModel.updateOrderForm.optionType}"/>
+                                    </td>
                                     <td width="100px">
                                         <input type="text" th:name="quantity" th:value="${orderModel.updateOrderForm.quantity}"/>
                                     </td>
                                     <td width="100px">
                                         <input type="text" th:name="targetPrice" th:value="${orderModel.updateOrderForm.targetPrice}"/>
-                                    </td>
-                                    <td width="100px">
-                                        <input type="text" th:name="targetPrice" th:value="${orderModel.updateOrderForm.optionStrikePrice}"/>
-                                    </td>
-                                    <td width="100px">
-                                        <input type="text" th:name="targetPrice" th:value="${orderModel.updateOrderForm.optionExpiryDate}"/>
-                                    </td>
-                                    <td width="100px">
-                                        <input type="text" th:name="targetPrice" th:value="${orderModel.updateOrderForm.optionType}"/>
                                     </td>
                                     <td><input type="submit" name="updateOrder" value="Update Order"/></td>
                                     <td><input type="submit" name="cancelOrder" value="Cancel Order"/></td>
