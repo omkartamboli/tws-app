@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import javax.annotation.Resource;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -25,6 +26,8 @@ public class TickerAndOrderModelDtoPopulator {
 
     @Resource
     private OrderModelDtoPopulator orderModelDtoPopulator;
+
+    private static final DateTimeFormatter DATE_TIME_FORMATTER =  DateTimeFormatter.ofPattern("yyyyMMdd");
 
 
     public Map<CreateSetOrderFormDto , TickerFormsGroup> populate(Map<ContractEntity, List<OrderEntity>> contractOrdersMap) {
@@ -78,8 +81,6 @@ public class TickerAndOrderModelDtoPopulator {
 
     private String getNextFridayDateAsYYYYMMDD(){
         LocalDate d = LocalDate.now().with(TemporalAdjusters.next(DayOfWeek.FRIDAY));
-        return new StringBuilder(d.getYear()).append(d.getMonth()).append(d.getDayOfMonth()).toString();
-
-
+        return d.format(DATE_TIME_FORMATTER);
     }
 }
