@@ -10,6 +10,9 @@ import com.trading.app.tradingapp.persistance.entity.OrderEntity;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -36,7 +39,7 @@ public class TickerAndOrderModelDtoPopulator {
                 CreateOptionsOrderRequestDto createOptionsOrderRequestDto = new CreateOptionsOrderRequestDto();
                 createOptionsOrderRequestDto.setTicker(key.getSymbol());
                 createOptionsOrderRequestDto.setQuantity(1);
-                createOptionsOrderRequestDto.setOrderType(OrderType.BUY);
+                createOptionsOrderRequestDto.setDateYYYYMMDD(getNextFridayDateAsYYYYMMDD());
                 tickerFormsGroup.setCreateOptionsOrderRequestDto(createOptionsOrderRequestDto);
                 tickerFormsGroup.setOrderModelDtoList(value.stream().map(order -> orderModelDtoPopulator.populate(order)).collect(Collectors.toList()));
 
@@ -71,5 +74,12 @@ public class TickerAndOrderModelDtoPopulator {
 
         treeMap.putAll(tickerOrderModelMap);
         return treeMap;
+    }
+
+    private String getNextFridayDateAsYYYYMMDD(){
+        LocalDate d = LocalDate.now().with(TemporalAdjusters.next(DayOfWeek.FRIDAY));
+        return new StringBuilder(d.getYear()).append(d.getMonth()).append(d.getDayOfMonth()).toString();
+
+
     }
 }
