@@ -23,8 +23,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.servlet.view.RedirectView;
 
 import javax.annotation.Resource;
-import java.util.Collections;
-import java.util.List;
+
 import java.util.Map;
 
 @Controller
@@ -46,7 +45,7 @@ public class DashboardController {
     @GetMapping("/dashboard")
     public String getDashboard(Model model) {
         // Add Ticker and Orders data
-        Map<CreateSetOrderFormDto , TickerFormsGroup> tickerFormsGroupMap = getDashboardService().getTickerOrderModelMap();
+        Map<CreateSetOrderFormDto, TickerFormsGroup> tickerFormsGroupMap = getDashboardService().getTickerOrderModelMap();
         model.addAttribute("tickerFormsGroupMap", tickerFormsGroupMap);
         model.addAttribute("tickerFormsList", tickerFormsGroupMap.keySet());
         return "dashboard";
@@ -61,52 +60,68 @@ public class DashboardController {
         return new RedirectView("/dashboard");
     }
 
-    @PostMapping(value = "/dashboard/createOptionsOrder" , params = "callBuy")
+    @PostMapping(value = "/dashboard/createOptionsOrder", params = "callBuy")
     public RedirectView createOptionsOrderCallBuy(@ModelAttribute CreateOptionsOrderRequestDto createOptionsOrderRequestDto, Model model) {
 
         createOptionsOrderRequestDto.setOrderType(OrderType.BUY);
         createOptionsOrderRequestDto.setOptionType(OptionType.CALL);
 
-        return createOptionsOrder(createOptionsOrderRequestDto, model);
+        return createOptionsOrder(createOptionsOrderRequestDto, model, false);
     }
 
-    @PostMapping(value = "/dashboard/createOptionsOrder" , params = "callSell")
+    @PostMapping(value = "/dashboard/createOptionsOrder", params = "callSell")
     public RedirectView createOptionsOrderCallSell(@ModelAttribute CreateOptionsOrderRequestDto createOptionsOrderRequestDto, Model model) {
 
         createOptionsOrderRequestDto.setOrderType(OrderType.SELL);
         createOptionsOrderRequestDto.setOptionType(OptionType.CALL);
 
-        return createOptionsOrder(createOptionsOrderRequestDto, model);
+        return createOptionsOrder(createOptionsOrderRequestDto, model, false);
     }
 
-    @PostMapping(value = "/dashboard/createOptionsOrder" , params = "putBuy")
+    @PostMapping(value = "/dashboard/createOptionsOrder", params = "putBuy")
     public RedirectView createOptionsOrderPutBuy(@ModelAttribute CreateOptionsOrderRequestDto createOptionsOrderRequestDto, Model model) {
 
         createOptionsOrderRequestDto.setOrderType(OrderType.BUY);
         createOptionsOrderRequestDto.setOptionType(OptionType.PUT);
 
-        return createOptionsOrder(createOptionsOrderRequestDto, model);
+        return createOptionsOrder(createOptionsOrderRequestDto, model, false);
     }
 
-    @PostMapping(value = "/dashboard/createOptionsOrder" , params = "putSell")
+    @PostMapping(value = "/dashboard/createOptionsOrder", params = "putSell")
     public RedirectView createOptionsOrderPutSell(@ModelAttribute CreateOptionsOrderRequestDto createOptionsOrderRequestDto, Model model) {
 
         createOptionsOrderRequestDto.setOrderType(OrderType.SELL);
         createOptionsOrderRequestDto.setOptionType(OptionType.PUT);
 
-        return createOptionsOrder(createOptionsOrderRequestDto, model);
+        return createOptionsOrder(createOptionsOrderRequestDto, model, false);
+    }
+
+    @PostMapping(value = "/dashboard/createOptionsOrder", params = "straddleBuy")
+    public RedirectView createOptionsOrderStraddleBuy(@ModelAttribute CreateOptionsOrderRequestDto createOptionsOrderRequestDto, Model model) {
+
+        createOptionsOrderRequestDto.setOrderType(OrderType.BUY);
+
+        return createOptionsOrder(createOptionsOrderRequestDto, model, true);
+    }
+
+    @PostMapping(value = "/dashboard/createOptionsOrder", params = "straddleSell")
+    public RedirectView createOptionsOrderStraddleSell(@ModelAttribute CreateOptionsOrderRequestDto createOptionsOrderRequestDto, Model model) {
+
+        createOptionsOrderRequestDto.setOrderType(OrderType.SELL);
+
+        return createOptionsOrder(createOptionsOrderRequestDto, model, true);
     }
 
 
-    public RedirectView createOptionsOrder(@ModelAttribute CreateOptionsOrderRequestDto createOptionsOrderRequestDto, Model model) {
+    public RedirectView createOptionsOrder(@ModelAttribute CreateOptionsOrderRequestDto createOptionsOrderRequestDto, Model model, boolean isStraddle) {
 
         // place order using form
-        getOrderService().createOptionsOrder(createOptionsOrderRequestDto, MANUAL_ORDER, null);
+        getOrderService().createOptionsOrder(createOptionsOrderRequestDto, MANUAL_ORDER, null, isStraddle);
 
         return new RedirectView("/dashboard");
     }
 
-    @PostMapping(value = "/dashboard/updateSetOrder" , params = "updateOrder")
+    @PostMapping(value = "/dashboard/updateSetOrder", params = "updateOrder")
     public RedirectView updateSetOrder(@ModelAttribute UpdateSetOrderRequestDto updateSetOrderRequestDto, Model model) {
 
         // update order using form
@@ -115,7 +130,7 @@ public class DashboardController {
         return new RedirectView("/dashboard");
     }
 
-    @PostMapping(value = "/dashboard/updateSetOrder" , params = "cancelOrder")
+    @PostMapping(value = "/dashboard/updateSetOrder", params = "cancelOrder")
     public RedirectView cancelSetOrder(@ModelAttribute UpdateSetOrderRequestDto updateSetOrderRequestDto, Model model) {
 
         // cancel order using form
@@ -188,7 +203,6 @@ public class DashboardController {
 
         return new RedirectView("/dashboard");
     }
-
 
 
     @PostMapping(value = "/dashboard/createStepOrder", params = "sellStep1")

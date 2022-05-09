@@ -35,7 +35,7 @@ public class OrderController {
     @PostMapping("/createOptionsOrder")
     @ResponseBody
     public CreateOptionsOrderResponseDto createOptionsOrder(@RequestBody CreateOptionsOrderRequestDto createOptionsOrderRequestDto){
-        return orderService.createOptionsOrder(createOptionsOrderRequestDto, MANUAL_ORDER, null);
+        return orderService.createOptionsOrder(createOptionsOrderRequestDto, MANUAL_ORDER, null, false);
     }
 
     @PostMapping("/updateSetOrder")

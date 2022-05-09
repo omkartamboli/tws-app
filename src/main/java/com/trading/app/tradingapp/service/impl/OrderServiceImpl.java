@@ -1,7 +1,7 @@
 package com.trading.app.tradingapp.service.impl;
 
 import com.ib.client.*;
-import com.trading.app.tradingapp.dto.OptionType;
+import com.trading.app.tradingapp.dto.OrderType;
 import com.trading.app.tradingapp.dto.request.*;
 import com.trading.app.tradingapp.dto.response.CreateOptionsOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.CreateOrderResponseDto;
@@ -60,10 +60,15 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public CreateOptionsOrderResponseDto createOptionsOrder(CreateOptionsOrderRequestDto createOptionsOrderRequestDto, String orderTrigger, String orderTriggerInterval) {
+    public CreateOptionsOrderResponseDto createOptionsOrder(CreateOptionsOrderRequestDto createOptionsOrderRequestDto, String orderTrigger, String orderTriggerInterval, boolean isStraddle) {
         try {
             EClientSocket eClientSocket = getBaseService().getConnection();
-            Contract contract = getBaseService().createOptionsContract(createOptionsOrderRequestDto.getTicker(), createOptionsOrderRequestDto.getStrike(), createOptionsOrderRequestDto.getDateYYYYMMDD(), createOptionsOrderRequestDto.getOptionType().toString());
+            Contract contract;
+            if (isStraddle) {
+                contract = getBaseService().createOptionsStraddleContract(createOptionsOrderRequestDto.getTicker(), createOptionsOrderRequestDto.getStrike(), createOptionsOrderRequestDto.getDateYYYYMMDD(), createOptionsOrderRequestDto.getOrderType());
+            } else {
+                contract = getBaseService().createOptionsContract(createOptionsOrderRequestDto.getTicker(), createOptionsOrderRequestDto.getStrike(), createOptionsOrderRequestDto.getDateYYYYMMDD(), createOptionsOrderRequestDto.getOptionType().toString());
+            }
 
             List<Order> bracketOrders = createBracketOrderWithTP(getBaseService().getNextOrderId(), createOptionsOrderRequestDto.getOrderType().toString(), createOptionsOrderRequestDto.getQuantity(), createOptionsOrderRequestDto.getTransactionPrice(), createOptionsOrderRequestDto.getTargetPrice(), contract, orderTrigger, orderTriggerInterval);
 
@@ -278,7 +283,7 @@ public class OrderServiceImpl implements OrderService {
         Order parent = new Order();
         parent.orderId(parentOrderId);
         parent.action(action);
-        parent.orderType(OrderType.LMT);
+        parent.orderType(com.ib.client.OrderType.LMT);
         parent.totalQuantity(quantity);
         parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         parent.tif(Types.TimeInForce.GTC);
@@ -292,7 +297,7 @@ public class OrderServiceImpl implements OrderService {
         Order takeProfit = new Order();
         takeProfit.orderId(parent.orderId() + 1);
         takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
-        takeProfit.orderType(OrderType.LMT);
+        takeProfit.orderType(com.ib.client.OrderType.LMT);
         takeProfit.totalQuantity(quantity);
         takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
         takeProfit.tif(Types.TimeInForce.GTC);
@@ -307,7 +312,7 @@ public class OrderServiceImpl implements OrderService {
         Order stopLoss = new Order();
         stopLoss.orderId(parent.orderId() + 2);
         stopLoss.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
-        stopLoss.orderType(OrderType.STP);
+        stopLoss.orderType(com.ib.client.OrderType.STP);
         //Stop trigger price
         stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
         stopLoss.tif(Types.TimeInForce.GTC);
@@ -330,7 +335,7 @@ public class OrderServiceImpl implements OrderService {
         Order parent = new Order();
         parent.orderId(parentOrderId);
         parent.action(action.toUpperCase());
-        parent.orderType(OrderType.LMT);
+        parent.orderType(com.ib.client.OrderType.LMT);
         parent.totalQuantity(quantity);
         parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         parent.tif(Types.TimeInForce.GTC);
@@ -349,7 +354,7 @@ public class OrderServiceImpl implements OrderService {
             Order takeProfit = new Order();
             takeProfit.orderId(parent.orderId() + 1);
             takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
-            takeProfit.orderType(OrderType.LMT);
+            takeProfit.orderType(com.ib.client.OrderType.LMT);
             takeProfit.totalQuantity(quantity);
             takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
             takeProfit.tif(Types.TimeInForce.GTC);
@@ -375,7 +380,7 @@ public class OrderServiceImpl implements OrderService {
         Order updateOrder = new Order();
         updateOrder.orderId(orderId);
         updateOrder.action(action.toUpperCase());
-        updateOrder.orderType(OrderType.LMT);
+        updateOrder.orderType(com.ib.client.OrderType.LMT);
         updateOrder.totalQuantity(quantity);
         updateOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         updateOrder.tif(Types.TimeInForce.GTC);

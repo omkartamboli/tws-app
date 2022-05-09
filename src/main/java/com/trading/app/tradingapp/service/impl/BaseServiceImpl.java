@@ -1,6 +1,7 @@
 package com.trading.app.tradingapp.service.impl;
 
 import com.ib.client.*;
+import com.trading.app.tradingapp.dto.OptionType;
 import com.trading.app.tradingapp.dto.SequenceTracker;
 import com.trading.app.tradingapp.dto.response.MarketDataDto;
 import com.trading.app.tradingapp.persistance.entity.ContractEntity;
@@ -37,6 +38,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     private static final String SECURITY_TYPE = "STK";
 
     public static final String OPTIONS_TYPE = "OPT";
+
+    public static final String STRADDLE_TYPE = "BAG";
 
     private static final String EXCHANGE = "SMART";
 
@@ -247,6 +250,40 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         contract.right(callOrPut);
 
         return contract;
+    }
+
+    @Override
+    public Contract createOptionsStraddleContract(String ticker, Double strike, String dateYYYYMMDD, com.trading.app.tradingapp.dto.OrderType orderType) {
+
+        Contract straddleContract = new Contract();
+        straddleContract.symbol(ticker);
+        straddleContract.secType(STRADDLE_TYPE);
+        straddleContract.currency(CURRENCY);
+        straddleContract.exchange(SMART_EXCHANGE);
+        straddleContract.multiplier(MULTIPLIER_100);
+        straddleContract.strike(strike);
+        straddleContract.lastTradeDateOrContractMonth(dateYYYYMMDD);
+
+
+        Contract callContract = createOptionsContract(ticker,strike,dateYYYYMMDD, OptionType.CALL.toString());
+        Contract putContract = createOptionsContract(ticker,strike,dateYYYYMMDD, OptionType.PUT.toString());
+
+        ComboLeg callLeg = new ComboLeg();
+        callLeg.conid(callContract.conid());
+        callLeg.ratio(1);
+        callLeg.action(orderType.toString());
+        callLeg.exchange(SMART_EXCHANGE);
+
+
+        ComboLeg putLeg = new ComboLeg();
+        putLeg.conid(putContract.conid());
+        putLeg.ratio(1);
+        putLeg.action(orderType.toString());
+        putLeg.exchange(SMART_EXCHANGE);
+
+        straddleContract.comboLegs(Arrays.asList(callLeg,putLeg));
+
+        return straddleContract;
     }
 
     public ContractEntity getContractByTickerId(Integer tickerId) {
