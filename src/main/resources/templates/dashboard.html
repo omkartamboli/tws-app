@@ -167,6 +167,10 @@
                                     </td>
 
                                     <td width="100px">
+                                        Stop Loss: <input type="text" th:name="stopLossPrice" th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.stopLossPrice}"/>
+                                    </td>
+
+                                    <td width="100px">
                                         Quantity: <input type="text" th:name="quantity" th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.quantity}"/>
                                     </td>
 

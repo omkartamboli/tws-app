@@ -11,6 +11,8 @@ public class CreateSetOrderRequestDto {
 
     private Double targetPrice;
 
+    private Double stopLossPrice;
+
     private OrderType orderType;
 
     private Integer quantity;
@@ -63,5 +65,13 @@ public class CreateSetOrderRequestDto {
 
     public void setTradingType(TradingType tradingType) {
         this.tradingType = tradingType;
+    }
+
+    public Double getStopLossPrice() {
+        return stopLossPrice;
+    }
+
+    public void setStopLossPrice(Double stopLossPrice) {
+        this.stopLossPrice = stopLossPrice;
     }
 }

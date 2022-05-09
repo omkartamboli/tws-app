@@ -1,7 +1,6 @@
 package com.trading.app.tradingapp.service.impl;
 
 import com.ib.client.*;
-import com.trading.app.tradingapp.dto.OrderType;
 import com.trading.app.tradingapp.dto.request.*;
 import com.trading.app.tradingapp.dto.response.CreateOptionsOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.CreateOrderResponseDto;
@@ -70,7 +69,12 @@ public class OrderServiceImpl implements OrderService {
                 contract = getBaseService().createOptionsContract(createOptionsOrderRequestDto.getTicker(), createOptionsOrderRequestDto.getStrike(), createOptionsOrderRequestDto.getDateYYYYMMDD(), createOptionsOrderRequestDto.getOptionType().toString());
             }
 
-            List<Order> bracketOrders = createBracketOrderWithTP(getBaseService().getNextOrderId(), createOptionsOrderRequestDto.getOrderType().toString(), createOptionsOrderRequestDto.getQuantity(), createOptionsOrderRequestDto.getTransactionPrice(), createOptionsOrderRequestDto.getTargetPrice(), contract, orderTrigger, orderTriggerInterval);
+            List<Order> bracketOrders = new ArrayList<>();
+            if(createOptionsOrderRequestDto.getStopLossPrice() == null) {
+                bracketOrders.addAll(createBracketOrderWithTP(getBaseService().getNextOrderId(), createOptionsOrderRequestDto.getOrderType().toString(), createOptionsOrderRequestDto.getQuantity(), createOptionsOrderRequestDto.getTransactionPrice(), createOptionsOrderRequestDto.getTargetPrice(), contract, orderTrigger, orderTriggerInterval));
+            } else {
+                bracketOrders.addAll(createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createOptionsOrderRequestDto.getOrderType().toString(), createOptionsOrderRequestDto.getQuantity(), createOptionsOrderRequestDto.getTransactionPrice(), createOptionsOrderRequestDto.getTargetPrice(), createOptionsOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval));
+            }
 
             for (Order bracketOrder : bracketOrders) {
                 eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
