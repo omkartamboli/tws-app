@@ -61,13 +61,17 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     private static final int BID_FIELD = 1;
 
-    private static final  String GENERIC_TICKS = "104, 106"; // Hist Vol, Imp Vol
+    private static final String GENERIC_TICKS = "104, 106"; // Hist Vol, Imp Vol
+
+    private static final int MILLIS_IN_DAY = 24 * 60 * 60 * 1000;
 
     private int nextTickerId = 101;
 
     private int nextTWSOrderId;
 
     private static final String FILLED_STATUS = "Filled";
+
+    private int latestConId = -1;
 
     protected static final int MAX_WAIT_COUNT = 50; // 0.5 sec
 
@@ -112,7 +116,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         }
         LOGGER.info("Creating TWS connection .....");
 
-        LOGGER.info("Params: \n[tws.api.host]=[{}]\n[tws.api.port]=[{}]\n[tws.api.clientid]=[{}]\n[default.order.value]=[{}]",getApiHost(),getApiPort(),getApiClientId(),defaultOrderValue);
+        LOGGER.info("Params: \n[tws.api.host]=[{}]\n[tws.api.port]=[{}]\n[tws.api.clientid]=[{}]\n[default.order.value]=[{}]", getApiHost(), getApiPort(), getApiClientId(), defaultOrderValue);
 
         eClientSocket.eConnect(DEFAULT_API_HOST, DEFAULT_API_PORT, DEFAULT_API_CLIENT_ID);
 
@@ -232,7 +236,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         contract.symbol(ticker);
         contract.currency(CURRENCY);
         // ABNB does not work with SMART exchange
-        contract.exchange("ABNB".equalsIgnoreCase(ticker)? ISLAND_EXCHANGE : EXCHANGE);
+        contract.exchange("ABNB".equalsIgnoreCase(ticker) ? ISLAND_EXCHANGE : EXCHANGE);
         contract.secType(SECURITY_TYPE);
         return contract;
     }
@@ -265,8 +269,15 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         straddleContract.lastTradeDateOrContractMonth(dateYYYYMMDD);
 
 
-        Contract callContract = createOptionsContract(ticker,strike,dateYYYYMMDD, OptionType.CALL.toString());
-        Contract putContract = createOptionsContract(ticker,strike,dateYYYYMMDD, OptionType.PUT.toString());
+        int timeAsInt = Math.toIntExact(System.currentTimeMillis() % MILLIS_IN_DAY);
+
+        Contract callContract = createOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.CALL.toString());
+        eClientSocket.reqContractDetails(timeAsInt, callContract);
+        setConidInOptionsContract(callContract);
+
+        Contract putContract = createOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.PUT.toString());
+        eClientSocket.reqContractDetails(timeAsInt + 1, putContract);
+        setConidInOptionsContract(putContract);
 
         ComboLeg callLeg = new ComboLeg();
         callLeg.conid(callContract.conid());
@@ -281,9 +292,21 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         putLeg.action(orderType.toString());
         putLeg.exchange(SMART_EXCHANGE);
 
-        straddleContract.comboLegs(Arrays.asList(callLeg,putLeg));
+        straddleContract.comboLegs(Arrays.asList(callLeg, putLeg));
 
         return straddleContract;
+    }
+
+    private void setConidInOptionsContract(Contract contract){
+        try {
+            while (latestConId < 0) {
+                Thread.sleep(10);
+            }
+            contract.conid(latestConId);
+        } catch (InterruptedException ie){
+            contract.conid(0);
+        }
+        latestConId = -1;
     }
 
     public ContractEntity getContractByTickerId(Integer tickerId) {
@@ -339,9 +362,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             orderEntity.setWhyHeld(whyHeld);
 
             // Set Realized PNL, if any of the child orders are filled completely
-            if(FILLED_STATUS.equalsIgnoreCase(status) && null != orderEntity.getParentOrder()){
+            if (FILLED_STATUS.equalsIgnoreCase(status) && null != orderEntity.getParentOrder()) {
                 OrderEntity parentOrderEntity = orderEntity.getParentOrder();
-                double fillPriceDiff = ((orderEntity.getAvgFillPrice() - parentOrderEntity.getAvgFillPrice()) * (com.trading.app.tradingapp.dto.OrderType.BUY.toString().equalsIgnoreCase(parentOrderEntity.getOrderAction()) ? 1:-1));
+                double fillPriceDiff = ((orderEntity.getAvgFillPrice() - parentOrderEntity.getAvgFillPrice()) * (com.trading.app.tradingapp.dto.OrderType.BUY.toString().equalsIgnoreCase(parentOrderEntity.getOrderAction()) ? 1 : -1));
                 parentOrderEntity.setRealizedPNL(roundOffDoubleForPriceDecimalFormat(fillPriceDiff * orderEntity.getFilled()));
                 getOrderRepository().save(parentOrderEntity);
             }
@@ -439,9 +462,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
                 updateContractEntity(contractEntity);
 
                 // update LTP in the runner
-                if(getContractService().getTickerSequenceTrackerMap() != null) {
+                if (getContractService().getTickerSequenceTrackerMap() != null) {
                     SequenceTracker sequenceTracker = getContractService().getTickerSequenceTrackerMap().get(contractEntity.getSymbol());
-                    if(sequenceTracker != null){
+                    if (sequenceTracker != null) {
                         sequenceTracker.setLtp(price);
                         LOGGER.info("Updated LTP in sequence tracker: Ticker Id:{}, Price: {}", tickerId, price);
                     }
@@ -509,13 +532,13 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         LOGGER.info("Order status is updated in the database for order: [{}]", orderId);
 
         // If order is Filled
-        if(FILLED_STATUS.equalsIgnoreCase(status)){
+        if (FILLED_STATUS.equalsIgnoreCase(status)) {
             getContractService().getTickerSequenceTrackerMap().values().forEach(sequenceTracker -> {
-                if(sequenceTracker.getBuyTpOrderId().equals(orderId)){
+                if (sequenceTracker.getBuyTpOrderId().equals(orderId)) {
                     sequenceTracker.setBuyTpOrderFilled(true);
                     return;
                 }
-                if(sequenceTracker.getSellTpOrderId().equals(orderId)){
+                if (sequenceTracker.getSellTpOrderId().equals(orderId)) {
                     sequenceTracker.setSellTpOrderFilled(true);
                     return;
                 }
@@ -561,7 +584,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public void contractDetails(int reqId, ContractDetails contractDetails) {
-
+        LOGGER.info(String.format("*** Details: %d", contractDetails.conid()));
+        latestConId = contractDetails.conid();
     }
 
     @Override
@@ -915,7 +939,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     }
 
 
-    private double roundOffDoubleForPriceDecimalFormat(double price){
+    private double roundOffDoubleForPriceDecimalFormat(double price) {
         return Math.round(price * 100.0d) / 100.0d;
     }
 }
