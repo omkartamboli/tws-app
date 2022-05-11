@@ -1,5 +1,9 @@
 package com.trading.app.tradingapp.populator;
 
+import com.ib.client.Contract;
+import com.ib.client.Order;
+import com.ib.client.OrderState;
+import com.ib.client.OrderStatus;
 import com.trading.app.tradingapp.dto.model.OrderModelDto;
 import com.trading.app.tradingapp.dto.request.UpdateSetOrderRequestDto;
 import com.trading.app.tradingapp.persistance.entity.OrderEntity;
@@ -8,8 +12,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class OrderModelDtoPopulator {
 
-    public OrderModelDto populate(OrderEntity orderEntity){
-        if(orderEntity != null) {
+    public static final String OPTIONS_TYPE = "OPT";
+
+    public static final String STRADDLE_TYPE = "BAG";
+
+    public OrderModelDto populate(OrderEntity orderEntity) {
+        if (orderEntity != null) {
             OrderModelDto orderModelDto = new OrderModelDto();
 
             orderModelDto.setAvgFillPrice(orderEntity.getAvgFillPrice());
@@ -22,7 +30,7 @@ public class OrderModelDtoPopulator {
             orderModelDto.setOrderStatus(orderEntity.getOrderStatus());
             orderModelDto.setOrderType(orderEntity.getOrderType());
             orderModelDto.setOutsideRth(orderEntity.getOutsideRth());
-            orderModelDto.setParentOrder(orderEntity.getParentOrder()==null?null:orderEntity.getParentOrder().getOrderId());
+            orderModelDto.setParentOrder(orderEntity.getParentOrder() == null ? null : orderEntity.getParentOrder().getOrderId());
             orderModelDto.setQuantity(orderEntity.getQuantity());
             orderModelDto.setRealizedPNL(orderEntity.getRealizedPNL());
             orderModelDto.setUnrealizedPNL(orderEntity.getUnrealizedPNL());
@@ -43,11 +51,11 @@ public class OrderModelDtoPopulator {
             updateSetOrderRequestDto.setQuantity(orderEntity.getQuantity().intValue());
             updateSetOrderRequestDto.setTargetPrice(orderEntity.getTransactionPrice());
             updateSetOrderRequestDto.setOptionsOrder(orderModelDto.getOptionsOrder());
-            if(orderEntity.getParentOrder()!=null) {
+            if (orderEntity.getParentOrder() != null) {
                 updateSetOrderRequestDto.setParentOrderId(orderEntity.getParentOrder().getOrderId());
             }
 
-            if(orderModelDto.getOptionsOrder()){
+            if (orderModelDto.getOptionsOrder()) {
                 orderModelDto.setOptionStrikePrice(orderEntity.getOptionStrikePrice());
                 orderModelDto.setOptionExpiryDate(orderEntity.getOptionExpiryDate());
                 orderModelDto.setOptionType(orderEntity.getOptionType());
@@ -64,5 +72,60 @@ public class OrderModelDtoPopulator {
         }
         return null;
 
+    }
+
+
+    public OrderModelDto populate(Order order, Contract contract) {
+        if (order != null) {
+            OrderModelDto orderModelDto = new OrderModelDto();
+
+            orderModelDto.setCurrency(contract.currency());
+            orderModelDto.setFilled(order.filledQuantity());
+
+            orderModelDto.setOrderAction(order.getAction());
+            orderModelDto.setOrderId(order.orderId());
+
+            orderModelDto.setOrderType(order.orderType().getApiString());
+            orderModelDto.setOutsideRth(order.outsideRth());
+            orderModelDto.setParentOrder(order.parentId() > 0 ? order.parentId() : null);
+            orderModelDto.setQuantity(order.totalQuantity());
+
+
+            orderModelDto.setRemaining(order.totalQuantity() - order.filledQuantity());
+
+            orderModelDto.setStopLossPrice(order.auxPrice());
+            orderModelDto.setSymbol(contract.symbol());
+
+            orderModelDto.setTimeInForce(order.tif().getApiString());
+            orderModelDto.setTransactionPrice(order.lmtPrice());
+            orderModelDto.setTransmit(order.transmit());
+
+            orderModelDto.setOptionsOrder(OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType()) || STRADDLE_TYPE.equalsIgnoreCase(contract.getSecType()));
+
+
+            UpdateSetOrderRequestDto updateSetOrderRequestDto = new UpdateSetOrderRequestDto();
+            updateSetOrderRequestDto.setOrderId(order.orderId());
+            updateSetOrderRequestDto.setQuantity((int)order.totalQuantity());
+            updateSetOrderRequestDto.setTargetPrice(order.lmtPrice());
+            updateSetOrderRequestDto.setOptionsOrder(orderModelDto.getOptionsOrder());
+               updateSetOrderRequestDto.setParentOrderId(orderModelDto.getParentOrder());
+
+
+            if (orderModelDto.getOptionsOrder()) {
+                orderModelDto.setOptionStrikePrice(contract.strike());
+                orderModelDto.setOptionExpiryDate(contract.lastTradeDateOrContractMonth());
+                orderModelDto.setOptionType(contract.right().getApiString());
+
+                updateSetOrderRequestDto.setOptionStrikePrice(contract.strike());
+                updateSetOrderRequestDto.setOptionExpiryDate(contract.lastTradeDateOrContractMonth());
+                updateSetOrderRequestDto.setOptionType(contract.right().getApiString());
+
+            }
+
+            orderModelDto.setUpdateOrderForm(updateSetOrderRequestDto);
+
+            return orderModelDto;
+        }
+        return null;
     }
 }

@@ -549,6 +549,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     @Override
     public void openOrder(int orderId, Contract contract, Order order, OrderState orderState) {
 
+
     }
 
     @Override
