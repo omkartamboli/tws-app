@@ -6,6 +6,8 @@ public class UpdateSetOrderRequestDto {
 
     private Double targetPrice;
 
+    private Double triggerPrice;
+
     private Integer quantity;
 
     private Integer parentOrderId;
@@ -17,6 +19,8 @@ public class UpdateSetOrderRequestDto {
     private String optionExpiryDate;
 
     private String optionType; // CALL or PUT
+
+    private String orderType;
 
 
 
@@ -82,5 +86,21 @@ public class UpdateSetOrderRequestDto {
 
     public void setOptionType(String optionType) {
         this.optionType = optionType;
+    }
+
+    public String getOrderType() {
+        return orderType;
+    }
+
+    public void setOrderType(String orderType) {
+        this.orderType = orderType;
+    }
+
+    public Double getTriggerPrice() {
+        return triggerPrice;
+    }
+
+    public void setTriggerPrice(Double triggerPrice) {
+        this.triggerPrice = triggerPrice;
     }
 }

@@ -39,6 +39,12 @@
                                     </h4>
                                 </td>
 
+                                <td width="200px">
+                                    <h4>
+                                        SL : <input type="text" th:name="stopLoss" th:value="${tickerForm.stopLoss}" width="10"/>
+                                    </h4>
+                                </td>
+
 
                                 <td>
                                     <table>
@@ -183,6 +189,9 @@
                                             <tr>
                                                 <td><input type="submit" name="putBuy" value="Put Buy"/></td>
                                             </tr>
+                                            <tr>
+                                                <td><input type="submit" name="straddleBuy" value="Straddle Buy"/></td>
+                                            </tr>
                                         </table>
                                     </td>
 
@@ -194,9 +203,24 @@
                                             <tr>
                                                 <td> | </td>
                                             </tr>
+                                            <tr>
+                                                <td> | </td>
+                                            </tr>
                                         </table>
                                     </td>
-
+                                    <td>
+                                        <table>
+                                            <tr>
+                                                <td> | </td>
+                                            </tr>
+                                            <tr>
+                                                <td> | </td>
+                                            </tr>
+                                            <tr>
+                                                <td> | </td>
+                                            </tr>
+                                        </table>
+                                    </td>
                                     <td>
                                         <table>
                                             <tr>
@@ -204,25 +228,6 @@
                                             </tr>
                                             <tr>
                                                 <td><input type="submit" name="putSell" value="Put Sell"/></td>
-                                            </tr>
-                                        </table>
-                                    </td>
-
-                                    <td>
-                                        <table>
-                                            <tr>
-                                                <td> | </td>
-                                            </tr>
-                                            <tr>
-                                                <td> | </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-
-                                    <td>
-                                        <table>
-                                            <tr>
-                                                <td><input type="submit" name="straddleBuy" value="Straddle Buy"/></td>
                                             </tr>
                                             <tr>
                                                 <td><input type="submit" name="straddleSell" value="Straddle Sell"/></td>
@@ -243,6 +248,7 @@
                             <thead>
                                 <td width="100px">Order Id</td>
                                 <td width="100px">Parent Order Id</td>
+                                <td width="100px">Order Type</td>
                                 <td width="100px">Strike Price</td>
                                 <td width="100px">Expiry Date</td>
                                 <td width="100px">Option Type</td>
@@ -256,6 +262,9 @@
                                     </td>
                                     <td width="100px">
                                         <input type="text"  th:name="parentOrderId" th:value="${orderModel.updateOrderForm.parentOrderId}"/>
+                                    </td>
+                                    <td width="100px">
+                                        <input type="text"  th:name="orderType" th:value="${orderModel.updateOrderForm.orderType}"/>
                                     </td>
                                     <td width="100px">
                                         <input type="text"  th:name="optionStrikePrice" th:value="${orderModel.updateOrderForm.optionStrikePrice}"/>

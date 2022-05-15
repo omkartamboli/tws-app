@@ -283,6 +283,14 @@ public class DashboardController {
         } else if (OrderType.SELL.equals(orderType)) {
             createSetOrderRequestDto.setTargetPrice(createSetOrderRequestDto.getTransactionPrice() - offSet);
         }
+
+        if(null != createSetOrderFormDto.getStopLoss()){
+            if (OrderType.BUY.equals(orderType)) {
+                createSetOrderRequestDto.setStopLossPrice(createSetOrderRequestDto.getTransactionPrice() - createSetOrderFormDto.getStopLoss());
+            } else if (OrderType.SELL.equals(orderType)) {
+                createSetOrderRequestDto.setStopLossPrice(createSetOrderRequestDto.getTransactionPrice() + createSetOrderFormDto.getStopLoss());
+            }
+        }
         return createSetOrderRequestDto;
     }
 

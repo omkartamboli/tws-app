@@ -40,6 +40,8 @@ public class OrderEntity {
 
     private Double stopLossPrice;
 
+    private Double stopLossTriggerPrice;
+
     @ManyToOne
     private OrderEntity parentOrder;
 
@@ -307,5 +309,13 @@ public class OrderEntity {
 
     public void setOptionType(String optionType) {
         this.optionType = optionType;
+    }
+
+    public Double getStopLossTriggerPrice() {
+        return stopLossTriggerPrice;
+    }
+
+    public void setStopLossTriggerPrice(Double stopLossTriggerPrice) {
+        this.stopLossTriggerPrice = stopLossTriggerPrice;
     }
 }

@@ -44,6 +44,7 @@ public class OrderModelDtoPopulator {
             orderModelDto.setTransmit(orderEntity.getTransmit());
             orderModelDto.setWhyHeld(orderEntity.getWhyHeld());
             orderModelDto.setOptionsOrder(Boolean.TRUE.equals(orderEntity.getOptionsOrder()));
+            orderModelDto.setTriggerPrice(orderEntity.getStopLossTriggerPrice());
 
 
             UpdateSetOrderRequestDto updateSetOrderRequestDto = new UpdateSetOrderRequestDto();
@@ -51,6 +52,8 @@ public class OrderModelDtoPopulator {
             updateSetOrderRequestDto.setQuantity(orderEntity.getQuantity().intValue());
             updateSetOrderRequestDto.setTargetPrice(orderEntity.getTransactionPrice());
             updateSetOrderRequestDto.setOptionsOrder(orderModelDto.getOptionsOrder());
+            updateSetOrderRequestDto.setOrderType(orderEntity.getOrderType());
+            updateSetOrderRequestDto.setTriggerPrice(orderEntity.getStopLossTriggerPrice());
             if (orderEntity.getParentOrder() != null) {
                 updateSetOrderRequestDto.setParentOrderId(orderEntity.getParentOrder().getOrderId());
             }
@@ -99,6 +102,7 @@ public class OrderModelDtoPopulator {
             orderModelDto.setTimeInForce(order.tif().getApiString());
             orderModelDto.setTransactionPrice(order.lmtPrice());
             orderModelDto.setTransmit(order.transmit());
+            orderModelDto.setOrderType(order.getOrderType());
 
             orderModelDto.setOptionsOrder(OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType()) || STRADDLE_TYPE.equalsIgnoreCase(contract.getSecType()));
 
@@ -108,6 +112,7 @@ public class OrderModelDtoPopulator {
             updateSetOrderRequestDto.setQuantity((int)order.totalQuantity());
             updateSetOrderRequestDto.setTargetPrice(order.lmtPrice());
             updateSetOrderRequestDto.setOptionsOrder(orderModelDto.getOptionsOrder());
+            updateSetOrderRequestDto.setOrderType(order.getOrderType());
                updateSetOrderRequestDto.setParentOrderId(orderModelDto.getParentOrder());
 
 

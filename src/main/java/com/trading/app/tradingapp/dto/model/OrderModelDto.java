@@ -26,6 +26,8 @@ public class OrderModelDto {
 
     private Double stopLossPrice;
 
+    private Double triggerPrice;
+
     private Integer parentOrder;
 
     private String currency;
@@ -285,5 +287,13 @@ public class OrderModelDto {
 
     public void setOptionType(String optionType) {
         this.optionType = optionType;
+    }
+
+    public Double getTriggerPrice() {
+        return triggerPrice;
+    }
+
+    public void setTriggerPrice(Double triggerPrice) {
+        this.triggerPrice = triggerPrice;
     }
 }

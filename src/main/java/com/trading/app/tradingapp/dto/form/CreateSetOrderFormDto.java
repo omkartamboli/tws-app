@@ -6,6 +6,8 @@ public class CreateSetOrderFormDto {
 
     private Double transactionPrice;
 
+    private Double stopLoss;
+
     private Double targetPriceOffsetBuyStep1;
 
     private Double targetPriceOffsetBuyStep2;
@@ -150,5 +152,13 @@ public class CreateSetOrderFormDto {
 
     public void setQuantity(Integer quantity) {
         this.quantity = quantity;
+    }
+
+    public Double getStopLoss() {
+        return stopLoss;
+    }
+
+    public void setStopLoss(Double stopLoss) {
+        this.stopLoss = stopLoss;
     }
 }
