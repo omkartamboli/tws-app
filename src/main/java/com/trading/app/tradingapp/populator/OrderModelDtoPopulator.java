@@ -2,8 +2,6 @@ package com.trading.app.tradingapp.populator;
 
 import com.ib.client.Contract;
 import com.ib.client.Order;
-import com.ib.client.OrderState;
-import com.ib.client.OrderStatus;
 import com.trading.app.tradingapp.dto.model.OrderModelDto;
 import com.trading.app.tradingapp.dto.request.UpdateSetOrderRequestDto;
 import com.trading.app.tradingapp.persistance.entity.OrderEntity;
@@ -58,7 +56,7 @@ public class OrderModelDtoPopulator {
                 updateSetOrderRequestDto.setParentOrderId(orderEntity.getParentOrder().getOrderId());
             }
 
-            if (orderModelDto.getOptionsOrder()) {
+            if (Boolean.TRUE.equals(orderModelDto.getOptionsOrder())) {
                 orderModelDto.setOptionStrikePrice(orderEntity.getOptionStrikePrice());
                 orderModelDto.setOptionExpiryDate(orderEntity.getOptionExpiryDate());
                 orderModelDto.setOptionType(orderEntity.getOptionType());
@@ -97,6 +95,7 @@ public class OrderModelDtoPopulator {
             orderModelDto.setRemaining(order.totalQuantity() - order.filledQuantity());
 
             orderModelDto.setStopLossPrice(order.auxPrice());
+            orderModelDto.setTriggerPrice(order.auxPrice());
             orderModelDto.setSymbol(contract.symbol());
 
             orderModelDto.setTimeInForce(order.tif().getApiString());
@@ -113,10 +112,11 @@ public class OrderModelDtoPopulator {
             updateSetOrderRequestDto.setTargetPrice(order.lmtPrice());
             updateSetOrderRequestDto.setOptionsOrder(orderModelDto.getOptionsOrder());
             updateSetOrderRequestDto.setOrderType(order.getOrderType());
+            updateSetOrderRequestDto.setTriggerPrice(order.auxPrice());
                updateSetOrderRequestDto.setParentOrderId(orderModelDto.getParentOrder());
 
 
-            if (orderModelDto.getOptionsOrder()) {
+            if (Boolean.TRUE.equals(orderModelDto.getOptionsOrder())) {
                 orderModelDto.setOptionStrikePrice(contract.strike());
                 orderModelDto.setOptionExpiryDate(contract.lastTradeDateOrContractMonth());
                 orderModelDto.setOptionType(contract.right().getApiString());

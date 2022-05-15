@@ -113,7 +113,7 @@ public class OrderServiceImpl implements OrderService {
 
                 Contract contract = Boolean.TRUE.equals(orderToBeUpdated.getOptionsOrder()) ? getBaseService().createOptionsContract(orderToBeUpdated.getSymbol(), orderToBeUpdated.getOptionStrikePrice(), orderToBeUpdated.getOptionExpiryDate(), orderToBeUpdated.getOptionType()) : getBaseService().createStockContract(orderToBeUpdated.getSymbol());
 
-                Order updateOrder = updateOrder(orderToBeUpdated.getOrderId(), updateSetOrderRequestDto.getParentOrderId(), orderToBeUpdated.getOrderAction(), updateSetOrderRequestDto.getQuantity(), updateSetOrderRequestDto.getTargetPrice(), contract, updateSetOrderRequestDto.getOrderType(), orderToBeUpdated.getOrderTrigger(), orderToBeUpdated.getOrderTriggerInterval());
+                Order updateOrder = updateOrder(orderToBeUpdated.getOrderId(), updateSetOrderRequestDto.getParentOrderId(), orderToBeUpdated.getOrderAction(), updateSetOrderRequestDto.getQuantity(), updateSetOrderRequestDto.getTargetPrice(), updateSetOrderRequestDto.getTriggerPrice(),contract, updateSetOrderRequestDto.getOrderType(), orderToBeUpdated.getOrderTrigger(), orderToBeUpdated.getOrderTriggerInterval());
 
                 eClientSocket.placeOrder(updateOrder.orderId(), contract, updateOrder);
 
@@ -390,7 +390,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
-    private Order updateOrder(int orderId, Integer parentOrderId, String action, double quantity, double limitPrice, Contract contract, String orderType, String orderTrigger, String orderTriggerInterval) {
+    private Order updateOrder(int orderId, Integer parentOrderId, String action, double quantity, double limitPrice, double triggerPrice, Contract contract, String orderType, String orderTrigger, String orderTriggerInterval) {
 
         LOGGER.error("Updating order with OrderId=[{}], target price=[{}], quantity=[{}], ParentOrderId=[{}]", orderId, limitPrice, quantity, parentOrderId);
         Order updateOrder = new Order();
@@ -405,7 +405,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         if(OrderType.STP_LMT.getApiString().equalsIgnoreCase(orderType)){
-            updateOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
+            updateOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(triggerPrice));
             updateOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         }else if(OrderType.STP.getApiString().equalsIgnoreCase(orderType)){
             updateOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));

@@ -246,24 +246,25 @@
                     <td>
                         <table>
                             <thead>
-                                <td width="100px">Order Id</td>
-                                <td width="100px">Parent Order Id</td>
-                                <td width="100px">Order Type</td>
+                                <td width="50px">Order Id</td>
+                                <td width="50px">Parent Id</td>
+                                <td width="50px">Order Type</td>
                                 <td width="100px">Strike Price</td>
                                 <td width="100px">Expiry Date</td>
                                 <td width="100px">Option Type</td>
                                 <td width="100px">Quantity</td>
+                                <td width="100px">Trigger Price</td>
                                 <td width="100px">Target Price</td>
                             </thead>
                             <tr th:each="orderModel : ${tickerFormsGroupMap.get(tickerForm).orderModelDtoList}">
                                 <form action="#" th:action="@{/dashboard/updateSetOrder}" method="post">
-                                    <td width="100px">
+                                    <td width="50px">
                                         <input type="text"  th:name="orderId" th:value="${orderModel.updateOrderForm.orderId}"/>
                                     </td>
-                                    <td width="100px">
+                                    <td width="50px">
                                         <input type="text"  th:name="parentOrderId" th:value="${orderModel.updateOrderForm.parentOrderId}"/>
                                     </td>
-                                    <td width="100px">
+                                    <td width="50px">
                                         <input type="text"  th:name="orderType" th:value="${orderModel.updateOrderForm.orderType}"/>
                                     </td>
                                     <td width="100px">
@@ -277,6 +278,9 @@
                                     </td>
                                     <td width="100px">
                                         <input type="text" th:name="quantity" th:value="${orderModel.updateOrderForm.quantity}"/>
+                                    </td>
+                                    <td width="100px">
+                                        <input type="text" th:name="triggerPrice" th:value="${orderModel.updateOrderForm.triggerPrice}"/>
                                     </td>
                                     <td width="100px">
                                         <input type="text" th:name="targetPrice" th:value="${orderModel.updateOrderForm.targetPrice}"/>
