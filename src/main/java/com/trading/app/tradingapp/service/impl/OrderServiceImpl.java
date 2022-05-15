@@ -327,7 +327,12 @@ public class OrderServiceImpl implements OrderService {
         stopLoss.orderType(OrderType.STP_LMT);
         //Stop trigger price
         stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
-        stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+        // stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+
+        // Setting stop loss limit price as purchase price, to clear position at purchase price, When stop loss price is hit.
+        double commissionOffset = 10/quantity;
+        stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(action.equalsIgnoreCase("BUY") ? limitPrice + commissionOffset : limitPrice - commissionOffset));
+
         stopLoss.tif(Types.TimeInForce.GTC);
         stopLoss.outsideRth(true);
         stopLoss.displaySize(0);
