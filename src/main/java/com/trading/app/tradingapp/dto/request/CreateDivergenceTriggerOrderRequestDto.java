@@ -5,6 +5,7 @@ public class CreateDivergenceTriggerOrderRequestDto {
     Double close;
     Double low;
     Double high;
+    Double rsi;
     Double tpOffsetPrice;
     Integer divergenceDiff;
     String ticker;
@@ -72,5 +73,13 @@ public class CreateDivergenceTriggerOrderRequestDto {
 
     public void setTpOffsetPrice(Double tpOffsetPrice) {
         this.tpOffsetPrice = tpOffsetPrice;
+    }
+
+    public Double getRsi() {
+        return rsi;
+    }
+
+    public void setRsi(Double rsi) {
+        this.rsi = rsi;
     }
 }

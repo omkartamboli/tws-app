@@ -26,6 +26,13 @@ public class OrderServiceImpl implements OrderService {
     @Resource
     private BaseService baseService;
 
+    private static final String SECURITY_TYPE = "STK";
+
+    public static final String OPTIONS_TYPE = "OPT";
+
+    public static final String STRADDLE_TYPE = "BAG";
+
+
     private static final Logger LOGGER = LoggerFactory.getLogger(OrderServiceImpl.class);
 
     @Resource
@@ -40,6 +47,13 @@ public class OrderServiceImpl implements OrderService {
     private String tradingAccount;
 
 
+    @Value("${divergence.order.enabled}")
+    private Boolean divergenceOrderEnabled;
+
+    @Value("${divergence.order.rsi.filter.enabled}")
+    private Boolean divergenceOrderRsiFilterEnabled;
+
+
     @Override
     public CreateSetOrderResponseDto createOrder(CreateSetOrderRequestDto createSetOrderRequestDto, String orderTrigger, String orderTriggerInterval) {
         //TODO: Add request object validation
@@ -48,9 +62,9 @@ public class OrderServiceImpl implements OrderService {
             Contract contract = getBaseService().createStockContract(createSetOrderRequestDto.getTicker());
             List<Order> bracketOrders;
 
-            if(null == createSetOrderRequestDto.getStopLossPrice()) {
+            if (null == createSetOrderRequestDto.getStopLossPrice()) {
                 bracketOrders = createBracketOrderWithTP(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), contract, orderTrigger, orderTriggerInterval);
-            } else{
+            } else {
                 bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
             }
 
@@ -113,7 +127,7 @@ public class OrderServiceImpl implements OrderService {
 
                 Contract contract = Boolean.TRUE.equals(orderToBeUpdated.getOptionsOrder()) ? getBaseService().createOptionsContract(orderToBeUpdated.getSymbol(), orderToBeUpdated.getOptionStrikePrice(), orderToBeUpdated.getOptionExpiryDate(), orderToBeUpdated.getOptionType()) : getBaseService().createStockContract(orderToBeUpdated.getSymbol());
 
-                Order updateOrder = updateOrder(orderToBeUpdated.getOrderId(), updateSetOrderRequestDto.getParentOrderId(), orderToBeUpdated.getOrderAction(), updateSetOrderRequestDto.getQuantity(), updateSetOrderRequestDto.getTargetPrice(), updateSetOrderRequestDto.getTriggerPrice(),contract, updateSetOrderRequestDto.getOrderType(), orderToBeUpdated.getOrderTrigger(), orderToBeUpdated.getOrderTriggerInterval());
+                Order updateOrder = updateOrder(orderToBeUpdated.getOrderId(), updateSetOrderRequestDto.getParentOrderId(), orderToBeUpdated.getOrderAction(), updateSetOrderRequestDto.getQuantity(), updateSetOrderRequestDto.getTargetPrice(), updateSetOrderRequestDto.getTriggerPrice(), contract, updateSetOrderRequestDto.getOrderType(), orderToBeUpdated.getOrderTrigger(), orderToBeUpdated.getOrderTriggerInterval());
 
                 eClientSocket.placeOrder(updateOrder.orderId(), contract, updateOrder);
 
@@ -166,26 +180,46 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public CreateSetOrderResponseDto createOrder(CreateDivergenceTriggerOrderRequestDto createDivergenceTriggerOrderRequestDto, String orderTrigger) {
         LOGGER.info(JsonSerializer.serialize(createDivergenceTriggerOrderRequestDto));
-        try {
-            EClientSocket eClientSocket = getBaseService().getConnection();
-            Contract contract = getBaseService().createStockContract(createDivergenceTriggerOrderRequestDto.getTicker());
-            double tradePrice = createDivergenceTriggerOrderRequestDto.getClose();
-            double targetPricePercentage = (null == createDivergenceTriggerOrderRequestDto.getTpOffsetPrice() ? 0.5d : createDivergenceTriggerOrderRequestDto.getTpOffsetPrice());
-            double targetPriceOffset = tradePrice * targetPricePercentage / 100.0d * (createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? 1 : -1);
-            double targetPrice = tradePrice + targetPriceOffset;
-            double stopLossPrice = tradePrice - (targetPriceOffset / 2.0d);
-            com.trading.app.tradingapp.dto.OrderType orderType = createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? com.trading.app.tradingapp.dto.OrderType.BUY : com.trading.app.tradingapp.dto.OrderType.SELL;
+        LOGGER.info("RSI = {}", createDivergenceTriggerOrderRequestDto.getRsi());
+        if (Boolean.TRUE.equals(isDivergenceOrderEnabled())) {
+            if(qualifyRsiFilter(createDivergenceTriggerOrderRequestDto.getRsi(), createDivergenceTriggerOrderRequestDto.getDivergenceDiff())) {
+                try {
+                    EClientSocket eClientSocket = getBaseService().getConnection();
+                    Contract contract = getBaseService().createStockContract(createDivergenceTriggerOrderRequestDto.getTicker());
+                    double tradePrice = createDivergenceTriggerOrderRequestDto.getClose();
+                    double targetPricePercentage = (null == createDivergenceTriggerOrderRequestDto.getTpOffsetPrice() ? 0.5d : createDivergenceTriggerOrderRequestDto.getTpOffsetPrice());
+                    double targetPriceOffset = tradePrice * targetPricePercentage / 100.0d * (createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? 1 : -1);
+                    double targetPrice = tradePrice + targetPriceOffset;
+                    double stopLossPrice = tradePrice - (targetPriceOffset / 2.0d);
+                    com.trading.app.tradingapp.dto.OrderType orderType = createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? com.trading.app.tradingapp.dto.OrderType.BUY : com.trading.app.tradingapp.dto.OrderType.SELL;
 
-            List<Order> bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), orderType.toString(), getQuantity(tradePrice), tradePrice, targetPrice, stopLossPrice, contract, orderTrigger, createDivergenceTriggerOrderRequestDto.getInterval());
+                    List<Order> bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), orderType.toString(), getQuantity(tradePrice), tradePrice, targetPrice, stopLossPrice, contract, orderTrigger, createDivergenceTriggerOrderRequestDto.getInterval());
 
-            for (Order bracketOrder : bracketOrders) {
-                eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
+                    for (Order bracketOrder : bracketOrders) {
+                        eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
+                    }
+                    return getSuccessCreateSetOrderResult(bracketOrders.stream().map(Order::orderId).collect(Collectors.toList()));
+                } catch (Exception ex) {
+                    LOGGER.error("Could not place an order.", ex);
+                    return getFailedCreateSetOrderResult(ex);
+                }
+            } else {
+                LOGGER.info("Divergence order is did not qualify RSI filter");
+                return getFailedCreateSetOrderResult(new Exception("Divergence order is did not qualify RSI filter"));
             }
-            return getSuccessCreateSetOrderResult(bracketOrders.stream().map(Order::orderId).collect(Collectors.toList()));
-        } catch (Exception ex) {
-            LOGGER.error("Could not place an order.", ex);
-            return getFailedCreateSetOrderResult(ex);
+        } else {
+            LOGGER.info("Divergence order is not enabled.");
+            return getFailedCreateSetOrderResult(new Exception("Divergence order is not enabled."));
         }
+    }
+
+    private boolean qualifyRsiFilter(Double rsiValue, Integer divergenceDiff){
+        if(Boolean.TRUE.equals(isDivergenceOrderRsiFilterEnabled())){
+            if(rsiValue == null || divergenceDiff == null || (divergenceDiff > 0 && rsiValue > 30) || (divergenceDiff < 0 && rsiValue < 70)){
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
@@ -330,7 +364,8 @@ public class OrderServiceImpl implements OrderService {
         // stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
 
         // Setting stop loss limit price as purchase price, to clear position at purchase price, When stop loss price is hit.
-        double commissionOffset = 10/quantity;
+        double offsetQty = OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType()) || STRADDLE_TYPE.equalsIgnoreCase(contract.getSecType()) ? quantity * 100 : quantity;
+        double commissionOffset = 10 / offsetQty;
         stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(action.equalsIgnoreCase("BUY") ? limitPrice + commissionOffset : limitPrice - commissionOffset));
 
         stopLoss.tif(Types.TimeInForce.GTC);
@@ -395,7 +430,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
-    private Order updateOrder(int orderId, Integer parentOrderId, String action, double quantity, double limitPrice, double triggerPrice, Contract contract, String orderType, String orderTrigger, String orderTriggerInterval) {
+    private Order updateOrder(Integer orderId, Integer parentOrderId, String action, Integer quantity, Double limitPrice, Double triggerPrice, Contract contract, String orderType, String orderTrigger, String orderTriggerInterval) {
 
         LOGGER.error("Updating order with OrderId=[{}], target price=[{}], quantity=[{}], ParentOrderId=[{}]", orderId, limitPrice, quantity, parentOrderId);
         Order updateOrder = new Order();
@@ -405,16 +440,16 @@ public class OrderServiceImpl implements OrderService {
         updateOrder.displaySize(0);
         updateOrder.totalQuantity(quantity);
 
-        if(parentOrderId!=null) {
+        if (parentOrderId != null) {
             updateOrder.parentId(parentOrderId);
         }
 
-        if(OrderType.STP_LMT.getApiString().equalsIgnoreCase(orderType)){
+        if (OrderType.STP_LMT.getApiString().equalsIgnoreCase(orderType)) {
             updateOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(triggerPrice));
             updateOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
-        }else if(OrderType.STP.getApiString().equalsIgnoreCase(orderType)){
+        } else if (OrderType.STP.getApiString().equalsIgnoreCase(orderType)) {
             updateOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
-        }else{
+        } else {
             updateOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         }
 
@@ -438,7 +473,7 @@ public class OrderServiceImpl implements OrderService {
         orderEntity.setOrderAction(order.getAction());
         orderEntity.setQuantity(order.totalQuantity());
         orderEntity.setTransactionPrice(OrderType.STP.getApiString().equalsIgnoreCase(order.orderType().getApiString()) ? order.auxPrice() : order.lmtPrice());
-        if(OrderType.STP.getApiString().equalsIgnoreCase(order.orderType().getApiString()) || OrderType.STP_LMT.getApiString().equalsIgnoreCase(order.orderType().getApiString())){
+        if (OrderType.STP.getApiString().equalsIgnoreCase(order.orderType().getApiString()) || OrderType.STP_LMT.getApiString().equalsIgnoreCase(order.orderType().getApiString())) {
             orderEntity.setStopLossTriggerPrice(order.auxPrice());
         }
         orderEntity.setTimeInForce(order.tif().getApiString());
@@ -506,6 +541,22 @@ public class OrderServiceImpl implements OrderService {
 
     private double roundOffDoubleForPriceDecimalFormat(double price) {
         return Math.round(price * 100.0d) / 100.0d;
+    }
+
+    public Boolean isDivergenceOrderEnabled() {
+        return divergenceOrderEnabled;
+    }
+
+    public void setDivergenceOrderEnabled(Boolean divergenceOrderEnabled) {
+        this.divergenceOrderEnabled = divergenceOrderEnabled;
+    }
+
+    public Boolean isDivergenceOrderRsiFilterEnabled() {
+        return divergenceOrderRsiFilterEnabled;
+    }
+
+    public void setDivergenceOrderRsiFilterEnabled(Boolean divergenceOrderRsiFilterEnabled) {
+        this.divergenceOrderRsiFilterEnabled = divergenceOrderRsiFilterEnabled;
     }
 }
 

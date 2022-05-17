@@ -943,4 +943,12 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     private double roundOffDoubleForPriceDecimalFormat(double price) {
         return Math.round(price * 100.0d) / 100.0d;
     }
+
+    public Double getDefaultOrderValue() {
+        return defaultOrderValue;
+    }
+
+    public void setDefaultOrderValue(Double defaultOrderValue) {
+        this.defaultOrderValue = defaultOrderValue;
+    }
 }
