@@ -526,10 +526,10 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public void orderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, int permId, int parentId, double lastFillPrice, int clientId, String whyHeld, double mktCapPrice) {
-        LOGGER.info("Got order status for order: [{}]", orderId);
-        LOGGER.info("Data: status:[{}], filled:[{}], remaining:[{}], avgFillPrice:[{}], parent order id:[{}], clientId:[{}], mktCapPrice:[{}], whyHeld:[{}]", status, filled, remaining, avgFillPrice, parentId, clientId, mktCapPrice, whyHeld);
+        LOGGER.debug("Got order status for order: [{}]", orderId);
+        LOGGER.debug("Data: status:[{}], filled:[{}], remaining:[{}], avgFillPrice:[{}], parent order id:[{}], clientId:[{}], mktCapPrice:[{}], whyHeld:[{}]", status, filled, remaining, avgFillPrice, parentId, clientId, mktCapPrice, whyHeld);
         updateOrderStatus(orderId, status, filled, remaining, avgFillPrice, whyHeld, mktCapPrice);
-        LOGGER.info("Order status is updated in the database for order: [{}]", orderId);
+        LOGGER.debug("Order status is updated in the database for order: [{}]", orderId);
 
         // If order is Filled
         if (FILLED_STATUS.equalsIgnoreCase(status)) {

@@ -53,6 +53,21 @@ public class OrderServiceImpl implements OrderService {
     @Value("${divergence.order.rsi.filter.enabled}")
     private Boolean divergenceOrderRsiFilterEnabled;
 
+    @Value("${out.of.hours.order.enabled}")
+    private Boolean outOfHoursOrderEnabled;
+
+    @Value("${trading.start.hour}")
+    private Integer tradingStartHour;
+
+    @Value("${trading.start.minute}")
+    private Integer tradingStartMinute;
+
+    @Value("${trading.end.hour}")
+    private Integer tradingEndHour;
+
+    @Value("${trading.end.minute}")
+    private Integer tradingEndMinute;
+
 
     @Override
     public CreateSetOrderResponseDto createOrder(CreateSetOrderRequestDto createSetOrderRequestDto, String orderTrigger, String orderTriggerInterval) {
@@ -182,30 +197,35 @@ public class OrderServiceImpl implements OrderService {
         LOGGER.info(JsonSerializer.serialize(createDivergenceTriggerOrderRequestDto));
         LOGGER.info("RSI = {}", createDivergenceTriggerOrderRequestDto.getRsi());
         if (Boolean.TRUE.equals(isDivergenceOrderEnabled())) {
-            if(qualifyRsiFilter(createDivergenceTriggerOrderRequestDto.getRsi(), createDivergenceTriggerOrderRequestDto.getDivergenceDiff())) {
-                try {
-                    EClientSocket eClientSocket = getBaseService().getConnection();
-                    Contract contract = getBaseService().createStockContract(createDivergenceTriggerOrderRequestDto.getTicker());
-                    double tradePrice = createDivergenceTriggerOrderRequestDto.getClose();
-                    double targetPricePercentage = (null == createDivergenceTriggerOrderRequestDto.getTpOffsetPrice() ? 0.5d : createDivergenceTriggerOrderRequestDto.getTpOffsetPrice());
-                    double targetPriceOffset = tradePrice * targetPricePercentage / 100.0d * (createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? 1 : -1);
-                    double targetPrice = tradePrice + targetPriceOffset;
-                    double stopLossPrice = tradePrice - (targetPriceOffset / 2.0d);
-                    com.trading.app.tradingapp.dto.OrderType orderType = createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? com.trading.app.tradingapp.dto.OrderType.BUY : com.trading.app.tradingapp.dto.OrderType.SELL;
+            if (qualifyRsiFilter(createDivergenceTriggerOrderRequestDto.getRsi(), createDivergenceTriggerOrderRequestDto.getDivergenceDiff())) {
+                if(qualifyOutOfHoursOrderFilter()) {
+                    try {
+                        EClientSocket eClientSocket = getBaseService().getConnection();
+                        Contract contract = getBaseService().createStockContract(createDivergenceTriggerOrderRequestDto.getTicker());
+                        double tradePrice = createDivergenceTriggerOrderRequestDto.getClose();
+                        double targetPricePercentage = (null == createDivergenceTriggerOrderRequestDto.getTpOffsetPrice() ? 0.5d : createDivergenceTriggerOrderRequestDto.getTpOffsetPrice());
+                        double targetPriceOffset = tradePrice * targetPricePercentage / 100.0d * (createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? 1 : -1);
+                        double targetPrice = tradePrice + targetPriceOffset;
+                        double stopLossPrice = tradePrice - (targetPriceOffset / 2.0d);
+                        com.trading.app.tradingapp.dto.OrderType orderType = createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? com.trading.app.tradingapp.dto.OrderType.BUY : com.trading.app.tradingapp.dto.OrderType.SELL;
 
-                    List<Order> bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), orderType.toString(), getQuantity(tradePrice), tradePrice, targetPrice, stopLossPrice, contract, orderTrigger, createDivergenceTriggerOrderRequestDto.getInterval());
+                        List<Order> bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), orderType.toString(), getQuantity(tradePrice), tradePrice, targetPrice, stopLossPrice, contract, orderTrigger, createDivergenceTriggerOrderRequestDto.getInterval());
 
-                    for (Order bracketOrder : bracketOrders) {
-                        eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
+                        for (Order bracketOrder : bracketOrders) {
+                            eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
+                        }
+                        return getSuccessCreateSetOrderResult(bracketOrders.stream().map(Order::orderId).collect(Collectors.toList()));
+                    } catch (Exception ex) {
+                        LOGGER.error("Could not place an order.", ex);
+                        return getFailedCreateSetOrderResult(ex);
                     }
-                    return getSuccessCreateSetOrderResult(bracketOrders.stream().map(Order::orderId).collect(Collectors.toList()));
-                } catch (Exception ex) {
-                    LOGGER.error("Could not place an order.", ex);
-                    return getFailedCreateSetOrderResult(ex);
+                } else {
+                    LOGGER.info("Divergence order did not qualify out of hours order filter");
+                    return getFailedCreateSetOrderResult(new Exception("Divergence order did not qualify out of hours order filter"));
                 }
             } else {
-                LOGGER.info("Divergence order is did not qualify RSI filter");
-                return getFailedCreateSetOrderResult(new Exception("Divergence order is did not qualify RSI filter"));
+                LOGGER.info("Divergence order did not qualify RSI filter");
+                return getFailedCreateSetOrderResult(new Exception("Divergence order did not qualify RSI filter"));
             }
         } else {
             LOGGER.info("Divergence order is not enabled.");
@@ -213,9 +233,28 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private boolean qualifyRsiFilter(Double rsiValue, Integer divergenceDiff){
-        if(Boolean.TRUE.equals(isDivergenceOrderRsiFilterEnabled())){
-            if(rsiValue == null || divergenceDiff == null || (divergenceDiff > 0 && rsiValue > 30) || (divergenceDiff < 0 && rsiValue < 70)){
+    private boolean qualifyRsiFilter(Double rsiValue, Integer divergenceDiff) {
+        if (Boolean.TRUE.equals(isDivergenceOrderRsiFilterEnabled())) {
+            if (rsiValue == null || divergenceDiff == null || (divergenceDiff > 0 && rsiValue > 30) || (divergenceDiff < 0 && rsiValue < 70)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean qualifyOutOfHoursOrderFilter() {
+        if (Boolean.FALSE.equals(isOutOfHoursOrderEnabled())) {
+            Date date = new Date();   // given date
+            Calendar calendar = GregorianCalendar.getInstance(); // creates a new calendar instance
+            calendar.setTime(date);   // assigns calendar to given date
+            int currentHour = calendar.get(Calendar.HOUR_OF_DAY);
+            int currentMinute = calendar.get(Calendar.MINUTE);
+
+            int currentMinuteOfTheDay = currentHour * 60 + currentMinute;
+            int startMinuteOfTheDay = tradingStartHour * 60 + tradingStartMinute;
+            int endMinuteOfTheDay = tradingEndHour * 60 + tradingEndMinute;
+
+            if (currentMinuteOfTheDay < startMinuteOfTheDay || currentMinuteOfTheDay > endMinuteOfTheDay) {
                 return false;
             }
         }
@@ -557,6 +596,46 @@ public class OrderServiceImpl implements OrderService {
 
     public void setDivergenceOrderRsiFilterEnabled(Boolean divergenceOrderRsiFilterEnabled) {
         this.divergenceOrderRsiFilterEnabled = divergenceOrderRsiFilterEnabled;
+    }
+
+    public Boolean isOutOfHoursOrderEnabled() {
+        return outOfHoursOrderEnabled;
+    }
+
+    public void setOutOfHoursOrderEnabled(Boolean outOfHoursOrderEnabled) {
+        this.outOfHoursOrderEnabled = outOfHoursOrderEnabled;
+    }
+
+    public Integer getTradingStartHour() {
+        return tradingStartHour;
+    }
+
+    public void setTradingStartHour(Integer tradingStartHour) {
+        this.tradingStartHour = tradingStartHour;
+    }
+
+    public Integer getTradingStartMinute() {
+        return tradingStartMinute;
+    }
+
+    public void setTradingStartMinute(Integer tradingStartMinute) {
+        this.tradingStartMinute = tradingStartMinute;
+    }
+
+    public Integer getTradingEndHour() {
+        return tradingEndHour;
+    }
+
+    public void setTradingEndHour(Integer tradingEndHour) {
+        this.tradingEndHour = tradingEndHour;
+    }
+
+    public Integer getTradingEndMinute() {
+        return tradingEndMinute;
+    }
+
+    public void setTradingEndMinute(Integer tradingEndMinute) {
+        this.tradingEndMinute = tradingEndMinute;
     }
 }
 
