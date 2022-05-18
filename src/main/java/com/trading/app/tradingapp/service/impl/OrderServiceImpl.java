@@ -77,10 +77,12 @@ public class OrderServiceImpl implements OrderService {
             Contract contract = getBaseService().createStockContract(createSetOrderRequestDto.getTicker());
             List<Order> bracketOrders;
 
-            if (null == createSetOrderRequestDto.getStopLossPrice()) {
-                bracketOrders = createBracketOrderWithTP(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), contract, orderTrigger, orderTriggerInterval);
-            } else {
+            if (null != createSetOrderRequestDto.getStopLossPrice()) {
                 bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
+            } else if (null != createSetOrderRequestDto.getTrailingStopLossAmount()) {
+                bracketOrders = createBracketOrderWithTrailingSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTrailingStopLossAmount(), contract, orderTrigger, orderTriggerInterval);
+            } else {
+                bracketOrders = createBracketOrderWithTP(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), contract, orderTrigger, orderTriggerInterval);
             }
 
             for (Order bracketOrder : bracketOrders) {
@@ -198,7 +200,7 @@ public class OrderServiceImpl implements OrderService {
         LOGGER.info("RSI = {}", createDivergenceTriggerOrderRequestDto.getRsi());
         if (Boolean.TRUE.equals(isDivergenceOrderEnabled())) {
             if (qualifyRsiFilter(createDivergenceTriggerOrderRequestDto.getRsi(), createDivergenceTriggerOrderRequestDto.getDivergenceDiff())) {
-                if(qualifyOutOfHoursOrderFilter()) {
+                if (qualifyOutOfHoursOrderFilter()) {
                     try {
                         EClientSocket eClientSocket = getBaseService().getConnection();
                         Contract contract = getBaseService().createStockContract(createDivergenceTriggerOrderRequestDto.getTicker());
@@ -354,6 +356,54 @@ public class OrderServiceImpl implements OrderService {
         double orderSize = null == getDefaultOrderValue() ? DEFAULT_ORDER_VALUE : getDefaultOrderValue();
         return Math.floor(orderSize / tradePrice);
     }
+
+
+    private List<Order> createBracketOrderWithTrailingSL(int parentOrderId, String action, double quantity, double limitPrice, double stopLossTrailingAmount, Contract contract, String orderTrigger, String orderTriggerInterval) {
+
+        LOGGER.info("Creating bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], stopLossTrailingAmount=[{}], interval=[{}]", orderTrigger, parentOrderId, action, quantity, limitPrice, stopLossTrailingAmount, orderTriggerInterval);
+
+
+        List<Order> bracketOrder = new ArrayList<>();
+
+        //This will be our main or "parent" order
+        Order parent = new Order();
+        parent.orderId(parentOrderId);
+        parent.action(action);
+        parent.orderType(com.ib.client.OrderType.LMT);
+        parent.displaySize(0);
+        parent.totalQuantity(quantity);
+        parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
+        parent.tif(Types.TimeInForce.GTC);
+        parent.outsideRth(true);
+        parent.account(getTradingAccount());
+        parent.transmit(false);
+
+        bracketOrder.add(parent);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval);
+
+        Order stopLoss = new Order();
+        stopLoss.orderId(parent.orderId() + 1);
+        stopLoss.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+        stopLoss.orderType(OrderType.TRAIL_LIMIT);
+
+        stopLoss.auxPrice(stopLossTrailingAmount);
+        stopLoss.lmtPriceOffset(0.0d);
+        stopLoss.trailStopPrice(roundOffDoubleForPriceDecimalFormat(action.equalsIgnoreCase("BUY") ? limitPrice - stopLossTrailingAmount : limitPrice + stopLossTrailingAmount));
+
+        stopLoss.tif(Types.TimeInForce.GTC);
+        stopLoss.outsideRth(true);
+        stopLoss.displaySize(0);
+        stopLoss.totalQuantity(quantity);
+        stopLoss.account(getTradingAccount());
+        stopLoss.parentId(parentOrderId);
+        stopLoss.transmit(true);
+
+        bracketOrder.add(stopLoss);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval);
+
+        return bracketOrder;
+    }
+
 
     private List<Order> createBracketOrderWithTPSL(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice, double stopLossPrice, Contract contract, String orderTrigger, String orderTriggerInterval) {
 

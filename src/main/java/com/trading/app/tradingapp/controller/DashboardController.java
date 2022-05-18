@@ -4,7 +4,6 @@ import com.trading.app.tradingapp.dto.OptionType;
 import com.trading.app.tradingapp.dto.OrderType;
 import com.trading.app.tradingapp.dto.form.CreateSetOrderFormDto;
 import com.trading.app.tradingapp.dto.form.TickerFormsGroup;
-import com.trading.app.tradingapp.dto.model.OrderModelDto;
 
 import com.trading.app.tradingapp.dto.request.CreateOptionsOrderRequestDto;
 import com.trading.app.tradingapp.dto.request.CreateSetOrderRequestDto;
@@ -13,8 +12,6 @@ import com.trading.app.tradingapp.service.ContractService;
 import com.trading.app.tradingapp.service.DashboardService;
 import com.trading.app.tradingapp.service.OrderService;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -291,6 +288,9 @@ public class DashboardController {
                 createSetOrderRequestDto.setStopLossPrice(createSetOrderRequestDto.getTransactionPrice() + createSetOrderFormDto.getStopLoss());
             }
         }
+
+        createSetOrderRequestDto.setTrailingStopLossAmount(createSetOrderFormDto.getTrailingStopLoss());
+
         return createSetOrderRequestDto;
     }
 

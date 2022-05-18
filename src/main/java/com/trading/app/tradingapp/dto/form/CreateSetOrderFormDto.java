@@ -8,6 +8,8 @@ public class CreateSetOrderFormDto {
 
     private Double stopLoss;
 
+    private Double trailingStopLoss;
+
     private Double targetPriceOffsetBuyStep1;
 
     private Double targetPriceOffsetBuyStep2;
@@ -160,5 +162,13 @@ public class CreateSetOrderFormDto {
 
     public void setStopLoss(Double stopLoss) {
         this.stopLoss = stopLoss;
+    }
+
+    public Double getTrailingStopLoss() {
+        return trailingStopLoss;
+    }
+
+    public void setTrailingStopLoss(Double trailingStopLoss) {
+        this.trailingStopLoss = trailingStopLoss;
     }
 }

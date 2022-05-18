@@ -13,6 +13,8 @@ public class CreateSetOrderRequestDto {
 
     private Double stopLossPrice;
 
+    private Double trailingStopLossAmount;
+
     private OrderType orderType;
 
     private Integer quantity;
@@ -73,5 +75,13 @@ public class CreateSetOrderRequestDto {
 
     public void setStopLossPrice(Double stopLossPrice) {
         this.stopLossPrice = stopLossPrice;
+    }
+
+    public Double getTrailingStopLossAmount() {
+        return trailingStopLossAmount;
+    }
+
+    public void setTrailingStopLossAmount(Double trailingStopLossAmount) {
+        this.trailingStopLossAmount = trailingStopLossAmount;
     }
 }

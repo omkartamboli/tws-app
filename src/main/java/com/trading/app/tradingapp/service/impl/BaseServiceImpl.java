@@ -181,6 +181,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     @Override
     public MarketDataDto getMarketDataForContract(Contract contract, boolean acceptStaleData) throws Exception {
 
+        long currentTime = new java.sql.Timestamp(new Date().getTime()).getTime();
+
         RequestMarketDataThread thread = startMarketDataStreamForContract(contract);
 
         // Wait for market data request call to finish
@@ -199,7 +201,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             LOGGER.error("Contract Entity is not present in Database, Use Create contract entity API first.");
             throw new IllegalArgumentException("Contract Entity is not present in Database, Use Create contract entity API first.");
         } else {
-            long currentTime = new java.sql.Timestamp(new Date().getTime()).getTime();
+
             ContractEntity contractEntity = contractEntityOptional.get();
 
             if (contractEntity.getLtpTimestamp().getTime() > currentTime || contractEntity.getBidTimestamp().getTime() > currentTime || contractEntity.getAskTimestamp().getTime() > currentTime) {
