@@ -376,7 +376,7 @@ public class OrderServiceImpl implements OrderService {
         stopLoss.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
         stopLoss.orderType(OrderType.TRAIL_LIMIT);
 
-        stopLoss.auxPrice(stopLossTrailingAmount);
+        stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossTrailingAmount));
         stopLoss.lmtPriceOffset(0.0d);
         stopLoss.trailStopPrice(roundOffDoubleForPriceDecimalFormat(action.equalsIgnoreCase("BUY") ? limitPrice - stopLossTrailingAmount : limitPrice + stopLossTrailingAmount));
 
