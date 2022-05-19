@@ -115,7 +115,10 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         LOGGER.info("Creating TWS connection .....");
         LOGGER.info("____________________________________________________________________________________________________\n");
 
-        LOGGER.info("\nParams: \n[tws.api.host]=[{}]\n[tws.api.port]=[{}]\n[tws.api.clientid]=[{}]", getApiHost(), getApiPort(), getApiClientId());
+        LOGGER.info("Params:");
+        LOGGER.info("[tws.api.host]=[{}]", getApiHost());
+        LOGGER.info("[tws.api.port]=[{}]", getApiPort());
+        LOGGER.info("[tws.api.clientId]=[{}]",getApiClientId());
         LOGGER.info("____________________________________________________________________________________________________\n");
 
         eClientSocket.eConnect(DEFAULT_API_HOST, DEFAULT_API_PORT, DEFAULT_API_CLIENT_ID);
