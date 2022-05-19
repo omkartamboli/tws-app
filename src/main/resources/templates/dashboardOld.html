@@ -1,0 +1,356 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Trading App: Dashboard</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <link th:href="@{/css/dashboard.css}" rel="stylesheet"/>
+</head>
+<body>
+
+
+<th:block th:each="tickerForm: ${tickerFormsList}">
+
+    <table>
+        <!--  Ticker data and forms here-->
+        <tr th:class="inner">
+            <td th:class="inner">
+                <form action="#" th:action="@{/dashboard/createStepOrder}" method="post">
+                    <table>
+                        <tbody>
+                        <!--  Ticker data and forms here-->
+                        <tr>
+
+                            <td width="100px">
+                                <h4>
+                                    Ticker: <input size="10" type="text" th:name="ticker"
+                                                   th:value="${tickerForm.ticker}"/>
+                                </h4>
+                            </td>
+
+
+                            <td width="100px">
+                                <h4>
+                                    LTP : <input size="10" type="text" th:name="transactionPrice"
+                                                 th:value="${tickerForm.transactionPrice}" width="10"/>
+                                </h4>
+                            </td>
+
+                            <td width="100px">
+                                <h4>
+                                    Qty : <input size="10" type="text" th:name="quantity"
+                                                 th:value="${tickerForm.quantity}" width="10"/>
+                                </h4>
+                            </td>
+
+                            <td width="100px">
+                                <h4>
+                                    SL : <input size="10" type="text" th:name="stopLoss"
+                                                th:value="${tickerForm.stopLoss}" width="10"/>
+                                </h4>
+                            </td>
+                            <td width="100px">
+                                <h4>
+                                    Trailing SL : <input size="10" type="text" th:name="trailingStopLoss"
+                                                         th:value="${tickerForm.trailingStopLoss}" width="10"/>
+                                </h4>
+                            </td>
+
+                            <td>
+                                <table>
+                                    <!-- Buy forms here-->
+                                    <tr>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetBuyStep1"
+                                                           th:value="${tickerForm.targetPriceOffsetBuyStep1}"/></tr>
+                                                <tr><input size="5" type="submit" name="buyStep1" value="BUY"/></tr>
+                                            </table>
+
+                                        </td>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetBuyStep2"
+                                                           th:value="${tickerForm.targetPriceOffsetBuyStep2}"/></tr>
+                                                <tr><input size="5" type="submit" name="buyStep2" value="BUY"/></tr>
+                                            </table>
+                                        </td>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetBuyStep3"
+                                                           th:value="${tickerForm.targetPriceOffsetBuyStep3}"/></tr>
+                                                <tr><input size="5" type="submit" name="buyStep3" value="BUY"/></tr>
+                                            </table>
+                                        </td>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetBuyStep4"
+                                                           th:value="${tickerForm.targetPriceOffsetBuyStep4}"/></tr>
+                                                <tr><input size="5" type="submit" name="buyStep4" value="BUY"/></tr>
+                                            </table>
+                                        </td>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetBuyStep5"
+                                                           th:value="${tickerForm.targetPriceOffsetBuyStep5}"/></tr>
+                                                <tr><input size="5" type="submit" name="buyStep5" value="BUY"/></tr>
+                                            </table>
+                                        </td>
+                                        <td width="150px">
+                                            <table>
+                                                <tr><input size="10" type="text" th:name="startBuyRunMargin"
+                                                           th:value="${tickerForm.startBuyRunMargin}"/></tr>
+                                                <tr>
+                                                    <td><input size="10" type="submit" name="startBuyRunAction"
+                                                               value="Start Buy Run"/></td>
+                                                    <td><input size="10" type="submit" name="stopBuyRunAction"
+                                                               value="Stop Buy Run"/></td>
+                                                </tr>
+                                            </table>
+                                        </td>
+
+                                    </tr>
+                                    <!-- Sell forms here-->
+                                    <tr>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetSellStep1"
+                                                           th:value="${tickerForm.targetPriceOffsetSellStep1}"/></tr>
+                                                <tr><input size="5" type="submit" name="sellStep1" value="SELL"/></tr>
+                                            </table>
+                                        </td>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetSellStep2"
+                                                           th:value="${tickerForm.targetPriceOffsetSellStep2}"/></tr>
+                                                <tr><input size="5" type="submit" name="sellStep2" value="SELL"/></tr>
+                                            </table>
+                                        </td>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetSellStep3"
+                                                           th:value="${tickerForm.targetPriceOffsetSellStep3}"/></tr>
+                                                <tr><input size="5" type="submit" name="sellStep3" value="SELL"/></tr>
+                                            </table>
+                                        </td>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetSellStep4"
+                                                           th:value="${tickerForm.targetPriceOffsetSellStep4}"/></tr>
+                                                <tr><input size="5" type="submit" name="sellStep4" value="SELL"/></tr>
+                                            </table>
+                                        </td>
+                                        <td width="80px">
+                                            <table>
+                                                <tr><input size="5" type="text" th:name="targetPriceOffsetSellStep5"
+                                                           th:value="${tickerForm.targetPriceOffsetSellStep5}"/></tr>
+                                                <tr><input size="5" type="submit" name="sellStep5" value="SELL"/></tr>
+                                            </table>
+                                        </td>
+                                        <td width="150px">
+                                            <table>
+                                                <tr><input size="10" type="text" th:name="startSellRunMargin"
+                                                           th:value="${tickerForm.startSellRunMargin}"/></tr>
+                                                <tr>
+                                                    <td><input size="10" type="submit" name="startSellRunAction"
+                                                               value="Start Sell Run"/></td>
+                                                    <td><input size="10" type="submit" name="stopSellRunAction"
+                                                               value="Stop Sell Run"/></td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </form>
+            </td>
+        </tr>
+
+        <!--  Options Order data here      tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto -->
+
+        <tr th:class="inner">
+            <td th:class="inner">
+                <table>
+                    <thead>
+                    <td>Options Order:</td>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <form action="#" th:action="@{/dashboard/createOptionsOrder}" method="post">
+
+                            <td width="100px">
+                                Security: <input size="10" type="text" th:name="ticker"
+                                                 th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.ticker}"/>
+                            </td>
+
+                            <td width="100px">
+                                Strike: <input size="10" type="text" th:name="strike"
+                                               th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.strike}"/>
+                            </td>
+
+                            <td width="100px">
+                                Expiry: <input size="10" type="text" th:name="dateYYYYMMDD"
+                                               th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.dateYYYYMMDD}"/>
+                            </td>
+
+                            <td width="100px">
+                                Price: <input size="10" type="text" th:name="transactionPrice"
+                                              th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.transactionPrice}"/>
+                            </td>
+
+                            <td width="100px">
+                                Target: <input size="10" type="text" th:name="targetPrice"
+                                               th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.targetPrice}"/>
+                            </td>
+
+                            <td width="100px">
+                                Stop Loss: <input size="10" type="text" th:name="stopLossPrice"
+                                                  th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.stopLossPrice}"/>
+                            </td>
+
+                            <td width="100px">
+                                Quantity: <input size="10" type="text" th:name="quantity"
+                                                 th:value="${tickerFormsGroupMap.get(tickerForm).createOptionsOrderRequestDto.quantity}"/>
+                            </td>
+
+
+                            <td>
+                                <table>
+                                    <tr>
+                                        <td><input size="10" type="submit" name="callBuy" value="Call Buy"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td><input size="10" type="submit" name="putBuy" value="Put Buy"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td><input size="10" type="submit" name="straddleBuy" value="Straddle Buy"/>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+
+                            <td>
+                                <table>
+                                    <tr>
+                                        <td> |</td>
+                                    </tr>
+                                    <tr>
+                                        <td> |</td>
+                                    </tr>
+                                    <tr>
+                                        <td> |</td>
+                                    </tr>
+                                </table>
+                            </td>
+                            <td>
+                                <table>
+                                    <tr>
+                                        <td> |</td>
+                                    </tr>
+                                    <tr>
+                                        <td> |</td>
+                                    </tr>
+                                    <tr>
+                                        <td> |</td>
+                                    </tr>
+                                </table>
+                            </td>
+                            <td>
+                                <table>
+                                    <tr>
+                                        <td><input size="10" type="submit" name="callSell" value="Call Sell"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td><input size="10" type="submit" name="putSell" value="Put Sell"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td><input size="10" type="submit" name="straddleSell" value="Straddle Sell"/>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </form>
+                    </tr>
+                    </tbody>
+                </table>
+            </td>
+        </tr>
+
+        <tr>
+            <td>Open Orders :</td>
+        </tr>
+
+        <!--  Order data here-->
+        <tr th:class="inner">
+            <td th:class="inner">
+                <table>
+                    <thead>
+                    <td width="50px">Order Id</td>
+                    <td width="50px">Parent Id</td>
+                    <td width="50px">Order Type</td>
+                    <td width="100px">Strike Price</td>
+                    <td width="100px">Expiry Date</td>
+                    <td width="100px">Option Type</td>
+                    <td width="100px">Quantity</td>
+                    <td width="100px">Trigger Price</td>
+                    <td width="100px">Target Price</td>
+                    </thead>
+                    <tr th:each="orderModel : ${tickerFormsGroupMap.get(tickerForm).orderModelDtoList}">
+                        <form action="#" th:action="@{/dashboard/updateSetOrder}" method="post">
+                            <td width="50px">
+                                <input size="10" type="text" th:name="orderId"
+                                       th:value="${orderModel.updateOrderForm.orderId}"/>
+                            </td>
+                            <td width="50px">
+                                <input size="10" type="text" th:name="parentOrderId"
+                                       th:value="${orderModel.updateOrderForm.parentOrderId}"/>
+                            </td>
+                            <td width="50px">
+                                <input size="10" type="text" th:name="orderType"
+                                       th:value="${orderModel.updateOrderForm.orderType}"/>
+                            </td>
+                            <td width="100px">
+                                <input size="10" type="text" th:name="optionStrikePrice"
+                                       th:value="${orderModel.updateOrderForm.optionStrikePrice}"/>
+                            </td>
+                            <td width="100px">
+                                <input size="10" type="text" th:name="optionExpiryDate"
+                                       th:value="${orderModel.updateOrderForm.optionExpiryDate}"/>
+                            </td>
+                            <td width="100px">
+                                <input size="10" type="text" th:name="optionType"
+                                       th:value="${orderModel.updateOrderForm.optionType}"/>
+                            </td>
+                            <td width="100px">
+                                <input size="10" type="text" th:name="quantity"
+                                       th:value="${orderModel.updateOrderForm.quantity}"/>
+                            </td>
+                            <td width="100px">
+                                <input size="10" type="text" th:name="triggerPrice"
+                                       th:value="${orderModel.updateOrderForm.triggerPrice}"/>
+                            </td>
+                            <td width="100px">
+                                <input size="10" type="text" th:name="targetPrice"
+                                       th:value="${orderModel.updateOrderForm.targetPrice}"/>
+                            </td>
+                            <td><input size="10" type="submit" name="updateOrder" value="Update Order"/></td>
+                            <td><input size="10" type="submit" name="cancelOrder" value="Cancel Order"/></td>
+                        </form>
+                        <td width="100px" th:text="${orderModel.orderStatus}"></td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+
+        <tr th:class="border_bottom">
+            <td></td>
+        </tr>
+    </table>
+<!--    <hr size="2px" color="gray"/>-->
+
+</th:block>
+
+</body>
+</html>

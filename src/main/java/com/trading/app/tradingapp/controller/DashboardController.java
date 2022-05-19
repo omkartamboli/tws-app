@@ -39,8 +39,17 @@ public class DashboardController {
 
     private static final String MANUAL_ORDER = "Manual Order";
 
-    @GetMapping("/dashboard")
+    @GetMapping("/dashboard/old")
     public String getDashboard(Model model) {
+        // Add Ticker and Orders data
+        Map<CreateSetOrderFormDto, TickerFormsGroup> tickerFormsGroupMap = getDashboardService().getTickerOrderModelMap();
+        model.addAttribute("tickerFormsGroupMap", tickerFormsGroupMap);
+        model.addAttribute("tickerFormsList", tickerFormsGroupMap.keySet());
+        return "dashboardOld";
+    }
+
+    @GetMapping("/dashboard")
+    public String getDashboardTab(Model model) {
         // Add Ticker and Orders data
         Map<CreateSetOrderFormDto, TickerFormsGroup> tickerFormsGroupMap = getDashboardService().getTickerOrderModelMap();
         model.addAttribute("tickerFormsGroupMap", tickerFormsGroupMap);
