@@ -193,14 +193,13 @@ public class OrderServiceImpl implements OrderService {
                             double targetPriceOffset = tradePrice * targetPricePercentage / 100.0d * (createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? 1 : -1);
                             double targetPrice = tradePrice + targetPriceOffset;
                             double stopLossPrice = tradePrice - (targetPriceOffset);
-
-
                             bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), orderType.toString(), getQuantity(tradePrice), tradePrice, targetPrice, stopLossPrice, contract, orderTrigger, createDivergenceTriggerOrderRequestDto.getInterval());
 
                         } else if ("TRSL".equalsIgnoreCase(divergenceOrderType)) {
-                            double trailingSLAmount = tradePrice * 0.01;
 
+                            double trailingSLAmount = tradePrice * 0.01;
                             bracketOrders = createBracketOrderWithTrailingSL(getBaseService().getNextOrderId(), orderType.toString(), getQuantity(tradePrice), tradePrice, trailingSLAmount, contract, orderTrigger, createDivergenceTriggerOrderRequestDto.getInterval());
+
                         } else {
                             LOGGER.info("Invalid \"divergence.order.type\" configuration in properties file.");
                             return getFailedCreateSetOrderResult(new Exception("Invalid \"divergence.order.type\" configuration in properties file."));

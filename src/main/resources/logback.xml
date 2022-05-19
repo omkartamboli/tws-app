@@ -14,7 +14,7 @@
         <file>./log/appLog.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <!-- daily rollover -->
-            <fileNamePattern>appLog.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <fileNamePattern>./log/appLog.%d{yyyy-MM-dd}.log</fileNamePattern>
 
             <!-- keep 30 days' worth of history capped at 1GB total size -->
             <maxHistory>30</maxHistory>
