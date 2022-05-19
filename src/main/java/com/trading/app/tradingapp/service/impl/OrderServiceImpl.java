@@ -14,7 +14,6 @@ import com.trading.app.tradingapp.service.SystemConfigService;
 import com.trading.app.tradingapp.util.JsonSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
@@ -180,14 +179,32 @@ public class OrderServiceImpl implements OrderService {
                     try {
                         EClientSocket eClientSocket = getBaseService().getConnection();
                         Contract contract = getBaseService().createStockContract(createDivergenceTriggerOrderRequestDto.getTicker());
+
+                        List<Order> bracketOrders;
+
+
+                        String divergenceOrderType = getDivergenceOrderType();
                         double tradePrice = createDivergenceTriggerOrderRequestDto.getClose();
-                        double targetPricePercentage = (null == createDivergenceTriggerOrderRequestDto.getTpOffsetPrice() ? 0.5d : createDivergenceTriggerOrderRequestDto.getTpOffsetPrice());
-                        double targetPriceOffset = tradePrice * targetPricePercentage / 100.0d * (createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? 1 : -1);
-                        double targetPrice = tradePrice + targetPriceOffset;
-                        double stopLossPrice = tradePrice - (targetPriceOffset / 2.0d);
                         com.trading.app.tradingapp.dto.OrderType orderType = createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? com.trading.app.tradingapp.dto.OrderType.BUY : com.trading.app.tradingapp.dto.OrderType.SELL;
 
-                        List<Order> bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), orderType.toString(), getQuantity(tradePrice), tradePrice, targetPrice, stopLossPrice, contract, orderTrigger, createDivergenceTriggerOrderRequestDto.getInterval());
+                        if ("TPSL".equalsIgnoreCase(divergenceOrderType)) {
+
+                            double targetPricePercentage = (null == createDivergenceTriggerOrderRequestDto.getTpOffsetPrice() ? 0.25d : createDivergenceTriggerOrderRequestDto.getTpOffsetPrice());
+                            double targetPriceOffset = tradePrice * targetPricePercentage / 100.0d * (createDivergenceTriggerOrderRequestDto.getDivergenceDiff() > 0 ? 1 : -1);
+                            double targetPrice = tradePrice + targetPriceOffset;
+                            double stopLossPrice = tradePrice - (targetPriceOffset);
+
+
+                            bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), orderType.toString(), getQuantity(tradePrice), tradePrice, targetPrice, stopLossPrice, contract, orderTrigger, createDivergenceTriggerOrderRequestDto.getInterval());
+
+                        } else if ("TRSL".equalsIgnoreCase(divergenceOrderType)) {
+                            double trailingSLAmount = tradePrice * 0.01;
+
+                            bracketOrders = createBracketOrderWithTrailingSL(getBaseService().getNextOrderId(), orderType.toString(), getQuantity(tradePrice), tradePrice, trailingSLAmount, contract, orderTrigger, createDivergenceTriggerOrderRequestDto.getInterval());
+                        } else {
+                            LOGGER.info("Invalid \"divergence.order.type\" configuration in properties file.");
+                            return getFailedCreateSetOrderResult(new Exception("Invalid \"divergence.order.type\" configuration in properties file."));
+                        }
 
                         for (Order bracketOrder : bracketOrders) {
                             eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
@@ -632,6 +649,10 @@ public class OrderServiceImpl implements OrderService {
 
     private Integer getTradingEndMinute() {
         return getSystemConfigService().getInteger("trading.end.minute");
+    }
+
+    private String getDivergenceOrderType() {
+        return getSystemConfigService().getString("divergence.order.type");
     }
 
 }
