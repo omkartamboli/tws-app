@@ -88,10 +88,6 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     @Value("${tws.api.clientid}")
     private String apiClientId;
 
-    @Value("${default.order.value}")
-    private Double defaultOrderValue;
-
-
     @Resource
     private ContractRepository contractRepository;
 
@@ -114,9 +110,13 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         if (eClientSocket.isConnected()) {
             return eClientSocket;
         }
-        LOGGER.info("Creating TWS connection .....");
 
-        LOGGER.info("Params: \n[tws.api.host]=[{}]\n[tws.api.port]=[{}]\n[tws.api.clientid]=[{}]\n[default.order.value]=[{}]", getApiHost(), getApiPort(), getApiClientId(), defaultOrderValue);
+        LOGGER.info("____________________________________________________________________________________________________\n");
+        LOGGER.info("Creating TWS connection .....");
+        LOGGER.info("____________________________________________________________________________________________________\n");
+
+        LOGGER.info("\nParams: \n[tws.api.host]=[{}]\n[tws.api.port]=[{}]\n[tws.api.clientid]=[{}]", getApiHost(), getApiPort(), getApiClientId());
+        LOGGER.info("____________________________________________________________________________________________________\n");
 
         eClientSocket.eConnect(DEFAULT_API_HOST, DEFAULT_API_PORT, DEFAULT_API_CLIENT_ID);
 
@@ -946,11 +946,4 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         return Math.round(price * 100.0d) / 100.0d;
     }
 
-    public Double getDefaultOrderValue() {
-        return defaultOrderValue;
-    }
-
-    public void setDefaultOrderValue(Double defaultOrderValue) {
-        this.defaultOrderValue = defaultOrderValue;
-    }
 }

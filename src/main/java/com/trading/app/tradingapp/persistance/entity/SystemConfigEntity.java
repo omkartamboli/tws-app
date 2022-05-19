@@ -22,52 +22,66 @@ public class SystemConfigEntity {
 
     private Double doubleValue;
 
+    private Boolean booleanValue;
+
+    public SystemConfigEntity() {
+    }
+
+    public SystemConfigEntity(String property, String stringValue) {
+        this.property = property;
+        this.stringValue = stringValue;
+    }
+
+    public SystemConfigEntity(String property, Integer intValue) {
+        this.property = property;
+        this.intValue = intValue;
+    }
+
+    public SystemConfigEntity(String property, Long longValue) {
+        this.property = property;
+        this.longValue = longValue;
+    }
+
+    public SystemConfigEntity(String property, Float floatValue) {
+        this.property = property;
+        this.floatValue = floatValue;
+    }
+
+    public SystemConfigEntity(String property, Double doubleValue) {
+        this.property = property;
+        this.doubleValue = doubleValue;
+    }
+
+    public SystemConfigEntity(String property, Boolean booleanValue) {
+        this.property = property;
+        this.booleanValue = booleanValue;
+    }
 
     public String getProperty() {
         return property;
-    }
-
-    public void setProperty(String property) {
-        this.property = property;
     }
 
     public String getStringValue() {
         return stringValue;
     }
 
-    public void setStringValue(String stringValue) {
-        this.stringValue = stringValue;
-    }
-
     public Integer getIntValue() {
         return intValue;
-    }
-
-    public void setIntValue(Integer intValue) {
-        this.intValue = intValue;
     }
 
     public Long getLongValue() {
         return longValue;
     }
 
-    public void setLongValue(Long longValue) {
-        this.longValue = longValue;
-    }
-
     public Float getFloatValue() {
         return floatValue;
-    }
-
-    public void setFloatValue(Float floatValue) {
-        this.floatValue = floatValue;
     }
 
     public Double getDoubleValue() {
         return doubleValue;
     }
 
-    public void setDoubleValue(Double doubleValue) {
-        this.doubleValue = doubleValue;
+    public Boolean getBooleanValue() {
+        return booleanValue;
     }
 }

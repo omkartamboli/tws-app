@@ -10,6 +10,7 @@ import com.trading.app.tradingapp.persistance.entity.OrderEntity;
 import com.trading.app.tradingapp.persistance.repository.OrderRepository;
 import com.trading.app.tradingapp.service.BaseService;
 import com.trading.app.tradingapp.service.OrderService;
+import com.trading.app.tradingapp.service.SystemConfigService;
 import com.trading.app.tradingapp.util.JsonSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,35 +39,10 @@ public class OrderServiceImpl implements OrderService {
     @Resource
     private OrderRepository orderRepository;
 
-    private static final double DEFAULT_ORDER_VALUE = 100000.00d;
+    @Resource
+    private SystemConfigService systemConfigService;
 
-    @Value("${default.order.value}")
-    private Double defaultOrderValue;
-
-    @Value("${tws.trading.account}")
-    private String tradingAccount;
-
-
-    @Value("${divergence.order.enabled}")
-    private Boolean divergenceOrderEnabled;
-
-    @Value("${divergence.order.rsi.filter.enabled}")
-    private Boolean divergenceOrderRsiFilterEnabled;
-
-    @Value("${out.of.hours.order.enabled}")
-    private Boolean outOfHoursOrderEnabled;
-
-    @Value("${trading.start.hour}")
-    private Integer tradingStartHour;
-
-    @Value("${trading.start.minute}")
-    private Integer tradingStartMinute;
-
-    @Value("${trading.end.hour}")
-    private Integer tradingEndHour;
-
-    @Value("${trading.end.minute}")
-    private Integer tradingEndMinute;
+    private static final double DEFAULT_ORDER_VALUE = 10000.00d;
 
 
     @Override
@@ -253,12 +229,10 @@ public class OrderServiceImpl implements OrderService {
             int currentMinute = calendar.get(Calendar.MINUTE);
 
             int currentMinuteOfTheDay = currentHour * 60 + currentMinute;
-            int startMinuteOfTheDay = tradingStartHour * 60 + tradingStartMinute;
-            int endMinuteOfTheDay = tradingEndHour * 60 + tradingEndMinute;
+            int startMinuteOfTheDay = getTradingStartHour() * 60 + getTradingStartMinute();
+            int endMinuteOfTheDay = getTradingEndHour() * 60 + getTradingEndMinute();
 
-            if (currentMinuteOfTheDay < startMinuteOfTheDay || currentMinuteOfTheDay > endMinuteOfTheDay) {
-                return false;
-            }
+            return currentMinuteOfTheDay >= startMinuteOfTheDay && currentMinuteOfTheDay <= endMinuteOfTheDay;
         }
         return true;
     }
@@ -353,7 +327,7 @@ public class OrderServiceImpl implements OrderService {
 
 
     private double getQuantity(double tradePrice) {
-        double orderSize = null == getDefaultOrderValue() ? DEFAULT_ORDER_VALUE : getDefaultOrderValue();
+        double orderSize = (getDefaultOrderValue() == null) ? DEFAULT_ORDER_VALUE : getDefaultOrderValue();
         return Math.floor(orderSize / tradePrice);
     }
 
@@ -612,80 +586,53 @@ public class OrderServiceImpl implements OrderService {
         this.orderRepository = orderRepository;
     }
 
-    public String getTradingAccount() {
-        return tradingAccount;
-    }
-
-    public void setTradingAccount(String tradingAccount) {
-        this.tradingAccount = tradingAccount;
-    }
-
-    public Double getDefaultOrderValue() {
-        return defaultOrderValue;
-    }
-
-    public void setDefaultOrderValue(Double defaultOrderValue) {
-        this.defaultOrderValue = defaultOrderValue;
-    }
-
     private double roundOffDoubleForPriceDecimalFormat(double price) {
         return Math.round(price * 100.0d) / 100.0d;
     }
 
-    public Boolean isDivergenceOrderEnabled() {
-        return divergenceOrderEnabled;
+    public SystemConfigService getSystemConfigService() {
+        return systemConfigService;
     }
 
-    public void setDivergenceOrderEnabled(Boolean divergenceOrderEnabled) {
-        this.divergenceOrderEnabled = divergenceOrderEnabled;
+    public void setSystemConfigService(SystemConfigService systemConfigService) {
+        this.systemConfigService = systemConfigService;
     }
 
-    public Boolean isDivergenceOrderRsiFilterEnabled() {
-        return divergenceOrderRsiFilterEnabled;
+    private String getTradingAccount() {
+        return getSystemConfigService().getString("tws.trading.account");
     }
 
-    public void setDivergenceOrderRsiFilterEnabled(Boolean divergenceOrderRsiFilterEnabled) {
-        this.divergenceOrderRsiFilterEnabled = divergenceOrderRsiFilterEnabled;
+    private boolean isDivergenceOrderEnabled() {
+        return Boolean.TRUE.equals(getSystemConfigService().getBoolean("divergence.order.enabled"));
     }
 
-    public Boolean isOutOfHoursOrderEnabled() {
-        return outOfHoursOrderEnabled;
+    private boolean isDivergenceOrderRsiFilterEnabled() {
+        return Boolean.TRUE.equals(getSystemConfigService().getBoolean("divergence.order.rsi.filter.enabled"));
     }
 
-    public void setOutOfHoursOrderEnabled(Boolean outOfHoursOrderEnabled) {
-        this.outOfHoursOrderEnabled = outOfHoursOrderEnabled;
+    private boolean isOutOfHoursOrderEnabled() {
+        return Boolean.TRUE.equals(getSystemConfigService().getBoolean("out.of.hours.order.enabled"));
     }
 
-    public Integer getTradingStartHour() {
-        return tradingStartHour;
+    private Double getDefaultOrderValue() {
+        return getSystemConfigService().getDouble("default.order.value");
     }
 
-    public void setTradingStartHour(Integer tradingStartHour) {
-        this.tradingStartHour = tradingStartHour;
+    private Integer getTradingStartHour() {
+        return getSystemConfigService().getInteger("trading.start.hour");
     }
 
-    public Integer getTradingStartMinute() {
-        return tradingStartMinute;
+    private Integer getTradingEndHour() {
+        return getSystemConfigService().getInteger("trading.end.hour");
     }
 
-    public void setTradingStartMinute(Integer tradingStartMinute) {
-        this.tradingStartMinute = tradingStartMinute;
+    private Integer getTradingStartMinute() {
+        return getSystemConfigService().getInteger("trading.start.minute");
     }
 
-    public Integer getTradingEndHour() {
-        return tradingEndHour;
+    private Integer getTradingEndMinute() {
+        return getSystemConfigService().getInteger("trading.end.minute");
     }
 
-    public void setTradingEndHour(Integer tradingEndHour) {
-        this.tradingEndHour = tradingEndHour;
-    }
-
-    public Integer getTradingEndMinute() {
-        return tradingEndMinute;
-    }
-
-    public void setTradingEndMinute(Integer tradingEndMinute) {
-        this.tradingEndMinute = tradingEndMinute;
-    }
 }
 
