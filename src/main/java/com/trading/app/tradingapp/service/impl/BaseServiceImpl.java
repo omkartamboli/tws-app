@@ -71,7 +71,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     private static final String FILLED_STATUS = "Filled";
 
-    private int latestConId = -1;
+    private Map<Integer, ContractDetails> contractDetailsMap = new HashMap<>();
 
     protected static final int MAX_WAIT_COUNT = 50; // 0.5 sec
 
@@ -262,6 +262,26 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     }
 
     @Override
+    public ContractDetails getOptionsChainContract(String ticker, String dateYYYYMMDD) {
+        Contract contract = new Contract();
+        contract.symbol(ticker);
+        contract.secType(OPTIONS_TYPE);
+        contract.currency(CURRENCY);
+        contract.exchange(SMART_EXCHANGE);
+        contract.multiplier(MULTIPLIER_100);
+        contract.lastTradeDateOrContractMonth(dateYYYYMMDD);
+
+        int timeAsInt = Math.toIntExact(System.currentTimeMillis() % MILLIS_IN_DAY);
+
+        eClientSocket.reqContractDetails(timeAsInt, contract);
+
+        ContractDetails contractDetails = new ContractDetails();
+
+
+        return getOptionsContractDetails(timeAsInt);
+    }
+
+    @Override
     public Contract createOptionsStraddleContract(String ticker, Double strike, String dateYYYYMMDD, com.trading.app.tradingapp.dto.OrderType orderType) {
 
         Contract straddleContract = new Contract();
@@ -278,11 +298,12 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
         Contract callContract = createOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.CALL.toString());
         eClientSocket.reqContractDetails(timeAsInt, callContract);
-        setConidInOptionsContract(callContract);
+        callContract.conid(getOptionsContractDetails(timeAsInt).conid());
 
         Contract putContract = createOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.PUT.toString());
         eClientSocket.reqContractDetails(timeAsInt + 1, putContract);
-        setConidInOptionsContract(putContract);
+
+        putContract.conid(getOptionsContractDetails(timeAsInt+1).conid());
 
         ComboLeg callLeg = new ComboLeg();
         callLeg.conid(callContract.conid());
@@ -302,16 +323,19 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         return straddleContract;
     }
 
-    private void setConidInOptionsContract(Contract contract){
+    private ContractDetails getOptionsContractDetails(int requestId){
         try {
-            while (latestConId < 0) {
+            while (getContractDetailsMap().get(requestId) == null) {
                 Thread.sleep(10);
             }
-            contract.conid(latestConId);
+
+            ContractDetails contractDetails = getContractDetailsMap().get(requestId);
+            getContractDetailsMap().remove(requestId);
+            return contractDetails;
+
         } catch (InterruptedException ie){
-            contract.conid(0);
+            return null;
         }
-        latestConId = -1;
     }
 
     public ContractEntity getContractByTickerId(Integer tickerId) {
@@ -584,14 +608,14 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public void nextValidId(int orderId) {
-        LOGGER.info("Received next order id from TWS [{}]", orderId);
+        LOGGER.info("Received next order id from TWS [{}] ***", orderId);
         setNextTWSOrderId(orderId);
     }
 
     @Override
     public void contractDetails(int reqId, ContractDetails contractDetails) {
-        LOGGER.info(String.format("*** Details: %d", contractDetails.conid()));
-        latestConId = contractDetails.conid();
+        LOGGER.info("Fetched contract details for request id {}",reqId);
+        getContractDetailsMap().put(reqId, contractDetails);
     }
 
     @Override
@@ -949,4 +973,11 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         return Math.round(price * 100.0d) / 100.0d;
     }
 
+    public Map<Integer, ContractDetails> getContractDetailsMap() {
+        return contractDetailsMap;
+    }
+
+    public void setContractDetailsMap(Map<Integer, ContractDetails> contractDetailsMap) {
+        this.contractDetailsMap = contractDetailsMap;
+    }
 }

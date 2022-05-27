@@ -369,7 +369,7 @@ public class OrderServiceImpl implements OrderService {
         parent.transmit(false);
 
         bracketOrder.add(parent);
-        persistOrder(parent, contract, orderTrigger, orderTriggerInterval);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false);
 
         Order stopLoss = new Order();
         stopLoss.orderId(parent.orderId() + 1);
@@ -389,7 +389,7 @@ public class OrderServiceImpl implements OrderService {
         stopLoss.transmit(true);
 
         bracketOrder.add(stopLoss);
-        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
 
         return bracketOrder;
     }
@@ -416,7 +416,7 @@ public class OrderServiceImpl implements OrderService {
         parent.transmit(false);
 
         bracketOrder.add(parent);
-        persistOrder(parent, contract, orderTrigger, orderTriggerInterval);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false);
 
         Order takeProfit = new Order();
         takeProfit.orderId(parent.orderId() + 1);
@@ -432,7 +432,7 @@ public class OrderServiceImpl implements OrderService {
         takeProfit.transmit(false);
 
         bracketOrder.add(takeProfit);
-        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval);
+        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false);
 
         Order stopLoss = new Order();
         stopLoss.orderId(parent.orderId() + 2);
@@ -456,7 +456,7 @@ public class OrderServiceImpl implements OrderService {
         stopLoss.transmit(true);
 
         bracketOrder.add(stopLoss);
-        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
 
         return bracketOrder;
     }
@@ -479,7 +479,7 @@ public class OrderServiceImpl implements OrderService {
         //The LAST CHILD will have it set to true.
         parent.transmit(false);
 
-        persistOrder(parent, contract, orderTrigger, orderTriggerInterval);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, true);
 
         List<Order> bracketOrder = new ArrayList<>();
         bracketOrder.add(parent);
@@ -498,7 +498,7 @@ public class OrderServiceImpl implements OrderService {
             takeProfit.parentId(parentOrderId);
             takeProfit.transmit(true);
 
-            persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval);
+            persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, true);
 
             bracketOrder.add(takeProfit);
         } else {
@@ -537,14 +537,14 @@ public class OrderServiceImpl implements OrderService {
         updateOrder.account(getTradingAccount());
         updateOrder.transmit(true);
 
-        persistOrder(updateOrder, contract, orderTrigger, orderTriggerInterval);
+        persistOrder(updateOrder, contract, orderTrigger, orderTriggerInterval, true);
 
 
         return updateOrder;
     }
 
 
-    private void persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType) {
+    private void persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType, boolean waitForOrdersToBeCreated) {
         OrderEntity orderEntity = new OrderEntity();
         orderEntity.setOrderId(order.orderId());
         orderEntity.setSymbol(contract.symbol());
@@ -576,13 +576,21 @@ public class OrderServiceImpl implements OrderService {
         }
         orderEntity.setCreatedTimestamp(new java.sql.Timestamp(new Date().getTime()));
         getOrderRepository().save(orderEntity);
+
+        if (waitForOrdersToBeCreated) {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException ie) {
+                // do nothing
+            }
+        }
     }
 
-    private void persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval) {
+    private void persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated) {
         if (BaseServiceImpl.OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType())) {
-            persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight());
+            persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated);
         } else {
-            persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null);
+            persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated);
         }
     }
 

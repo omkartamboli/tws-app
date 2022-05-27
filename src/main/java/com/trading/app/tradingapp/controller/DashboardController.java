@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.servlet.view.RedirectView;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpSession;
 
 import java.util.Map;
 
@@ -35,25 +36,29 @@ public class DashboardController {
     @Resource
     private ContractService contractService;
 
+    private static final String DEFAULT_SYMBOL = "TSLA";
+
     //private static final Logger LOGGER = LoggerFactory.getLogger(DashboardController.class);
 
     private static final String MANUAL_ORDER = "Manual Order";
 
     @GetMapping("/dashboard/old")
-    public String getDashboard(Model model) {
+    public String getDashboard(Model model, HttpSession httpSession) {
         // Add Ticker and Orders data
         Map<CreateSetOrderFormDto, TickerFormsGroup> tickerFormsGroupMap = getDashboardService().getTickerOrderModelMap();
         model.addAttribute("tickerFormsGroupMap", tickerFormsGroupMap);
         model.addAttribute("tickerFormsList", tickerFormsGroupMap.keySet());
+        model.addAttribute("activeSymbol", getLastAccessedSymbol(httpSession));
         return "dashboardOld";
     }
 
     @GetMapping("/dashboard")
-    public String getDashboardTab(Model model) {
+    public String getDashboardTab(Model model, HttpSession httpSession) {
         // Add Ticker and Orders data
         Map<CreateSetOrderFormDto, TickerFormsGroup> tickerFormsGroupMap = getDashboardService().getTickerOrderModelMap();
         model.addAttribute("tickerFormsGroupMap", tickerFormsGroupMap);
         model.addAttribute("tickerFormsList", tickerFormsGroupMap.keySet());
+        model.addAttribute("activeSymbol", getLastAccessedSymbol(httpSession));
         return "dashboard";
     }
 
@@ -326,5 +331,9 @@ public class DashboardController {
 
     public void setContractService(ContractService contractService) {
         this.contractService = contractService;
+    }
+
+    public String getLastAccessedSymbol(HttpSession httpSession) {
+        return httpSession.getAttribute("activeSymbol") == null ? DEFAULT_SYMBOL : httpSession.getAttribute("activeSymbol").toString();
     }
 }

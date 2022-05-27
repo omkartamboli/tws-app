@@ -1,6 +1,7 @@
 package com.trading.app.tradingapp.service;
 
 import com.ib.client.Contract;
+import com.ib.client.ContractDetails;
 import com.ib.client.EClientSocket;
 
 import com.trading.app.tradingapp.dto.OrderType;
@@ -21,6 +22,8 @@ public interface BaseService {
     Contract createStockContract(String ticker);
 
     Contract createOptionsContract(String ticker, Double strike, String dateYYYYMMDD, String callOrPut);
+
+    ContractDetails getOptionsChainContract(String ticker, String dateYYYYMMDD);
 
     Contract createOptionsStraddleContract(String ticker, Double strike, String dateYYYYMMDD, OrderType orderType);
 
