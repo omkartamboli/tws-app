@@ -32,6 +32,8 @@ public class OrderServiceImpl implements OrderService {
 
     public static final String STRADDLE_TYPE = "BAG";
 
+    public static final String DEFAULT_STATUS = "DefaultStatus";
+
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OrderServiceImpl.class);
 
@@ -570,6 +572,13 @@ public class OrderServiceImpl implements OrderService {
             orderEntity.setOptionType(optionType);
         }
 
+        // Set default status if Order is new
+
+        Optional<OrderEntity> optionalOrderEntity =  getOrderRepository().findById(order.orderId());
+        if(!optionalOrderEntity.isPresent()){
+            orderEntity.setOrderStatus(DEFAULT_STATUS);
+        }
+
         // set parent order if available
         if (order.parentId() != 0) {
             getOrderRepository().findById(order.parentId()).ifPresent(orderEntity::setParentOrder);
@@ -579,7 +588,7 @@ public class OrderServiceImpl implements OrderService {
 
         if (waitForOrdersToBeCreated) {
             try {
-                Thread.sleep(2000);
+                Thread.sleep(1000);
             } catch (InterruptedException ie) {
                 // do nothing
             }
