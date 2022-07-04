@@ -73,6 +73,29 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public CreateSetOrderResponseDto createSLOrder(CreateSetOrderRequestDto createSetOrderRequestDto, String orderTrigger, String orderTriggerInterval) {
+        try {
+            EClientSocket eClientSocket = getBaseService().getConnection();
+            Contract contract = getBaseService().createStockContract(createSetOrderRequestDto.getTicker());
+            List<Order> bracketOrders;
+
+            if (null == createSetOrderRequestDto.getTrailingStopLossAmount()) {
+                bracketOrders = createSLOrder(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), contract, orderTrigger, orderTriggerInterval);
+            } else {
+                bracketOrders = createTrailingSLOrder(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTrailingStopLossAmount(), contract, orderTrigger, orderTriggerInterval);
+            }
+
+            for (Order bracketOrder : bracketOrders) {
+                eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
+            }
+            return getSuccessCreateSetOrderResult(bracketOrders.stream().map(Order::orderId).collect(Collectors.toList()));
+        } catch (Exception ex) {
+            LOGGER.error("Could not place an order.", ex);
+            return getFailedCreateSetOrderResult(ex);
+        }
+    }
+
+    @Override
     public CreateOptionsOrderResponseDto createOptionsOrder(CreateOptionsOrderRequestDto createOptionsOrderRequestDto, String orderTrigger, String orderTriggerInterval, boolean isStraddle) {
         try {
             EClientSocket eClientSocket = getBaseService().getConnection();
@@ -388,6 +411,63 @@ public class OrderServiceImpl implements OrderService {
         stopLoss.totalQuantity(quantity);
         stopLoss.account(getTradingAccount());
         stopLoss.parentId(parentOrderId);
+        stopLoss.transmit(true);
+
+        bracketOrder.add(stopLoss);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
+
+        return bracketOrder;
+    }
+
+
+    private List<Order> createSLOrder(int orderId, String action, double quantity, double limitPrice, Contract contract, String orderTrigger, String orderTriggerInterval) {
+
+        LOGGER.info("Creating SL order");
+
+        List<Order> bracketOrder = new ArrayList<>();
+
+        Order stopLoss = new Order();
+        stopLoss.orderId(orderId);
+        stopLoss.action(action.equalsIgnoreCase("BUY") ? "BUY" : "SELL");
+        stopLoss.orderType(OrderType.STP_LMT);
+        //Stop trigger price
+        stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
+        stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
+
+        stopLoss.tif(Types.TimeInForce.GTC);
+        stopLoss.outsideRth(true);
+        stopLoss.displaySize(0);
+        stopLoss.totalQuantity(quantity);
+        stopLoss.account(getTradingAccount());
+        stopLoss.transmit(true);
+
+        bracketOrder.add(stopLoss);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
+
+        return bracketOrder;
+    }
+
+    private List<Order> createTrailingSLOrder(int orderId, String action, double quantity, double limitPrice, double stopLossTrailingAmount, Contract contract, String orderTrigger, String orderTriggerInterval) {
+
+        LOGGER.info("Creating SL order");
+
+        List<Order> bracketOrder = new ArrayList<>();
+
+        Order stopLoss = new Order();
+        stopLoss.orderId(orderId);
+        stopLoss.action(action.equalsIgnoreCase("BUY") ? "BUY" : "SELL");
+        stopLoss.orderType(OrderType.TRAIL_LIMIT);
+
+        //Stop trigger price
+        stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossTrailingAmount));
+        stopLoss.lmtPriceOffset(0.0d);
+        stopLoss.trailStopPrice(roundOffDoubleForPriceDecimalFormat(action.equalsIgnoreCase("SELL") ? limitPrice - stopLossTrailingAmount : limitPrice + stopLossTrailingAmount));
+
+        stopLoss.tif(Types.TimeInForce.GTC);
+        stopLoss.outsideRth(true);
+        stopLoss.displaySize(0);
+        stopLoss.totalQuantity(quantity);
+        stopLoss.account(getTradingAccount());
         stopLoss.transmit(true);
 
         bracketOrder.add(stopLoss);

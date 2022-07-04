@@ -10,6 +10,8 @@ import com.trading.app.tradingapp.dto.response.UpdateSetOrderResponseDto;
 public interface OrderService {
     CreateSetOrderResponseDto createOrder (CreateSetOrderRequestDto createSetOrderRequestDto, String orderTrigger, String orderTriggerInterval);
 
+    CreateSetOrderResponseDto createSLOrder (CreateSetOrderRequestDto createSetOrderRequestDto, String orderTrigger, String orderTriggerInterval);
+
     CreateOptionsOrderResponseDto createOptionsOrder (CreateOptionsOrderRequestDto createOptionsOrderRequestDto, String orderTrigger, String orderTriggerInterval, boolean isStraddle);
 
     CreateOrderResponseDto createOrder (CreateLtpOrderRequestDto createLtpOrderRequestDto, String orderTrigger, String orderTriggerInterval);

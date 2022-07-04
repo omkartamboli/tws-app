@@ -215,6 +215,15 @@ public class DashboardController {
         return new RedirectView("/dashboard");
     }
 
+    @PostMapping(value = "/dashboard/createStepOrder", params = "buySLOrder")
+    public RedirectView buySLOrder(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
+
+        // place order using form
+        getOrderService().createSLOrder(getCreateSetOrderRequestDto(createSetOrderFormDto, OrderType.BUY), MANUAL_ORDER, null);
+
+        return new RedirectView("/dashboard");
+    }
+
 
     @PostMapping(value = "/dashboard/createStepOrder", params = "sellStep1")
     public RedirectView createStepOrderSellStep1(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
@@ -279,6 +288,15 @@ public class DashboardController {
         return new RedirectView("/dashboard");
     }
 
+    @PostMapping(value = "/dashboard/createStepOrder", params = "sellSLOrder")
+    public RedirectView sellSLOrder(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
+
+        // place order using form
+        getOrderService().createSLOrder(getCreateSetOrderRequestDto(createSetOrderFormDto, OrderType.SELL), MANUAL_ORDER, null);
+
+        return new RedirectView("/dashboard");
+    }
+
 
     private CreateSetOrderRequestDto getCreateSetOrderRequestDto(CreateSetOrderFormDto createSetOrderFormDto, OrderType orderType, double offSet) {
 
@@ -303,6 +321,19 @@ public class DashboardController {
             }
         }
 
+        createSetOrderRequestDto.setTrailingStopLossAmount(createSetOrderFormDto.getTrailingStopLoss());
+
+        return createSetOrderRequestDto;
+    }
+
+    private CreateSetOrderRequestDto getCreateSetOrderRequestDto(CreateSetOrderFormDto createSetOrderFormDto, OrderType orderType) {
+
+        CreateSetOrderRequestDto createSetOrderRequestDto = new CreateSetOrderRequestDto();
+
+        createSetOrderRequestDto.setQuantity(createSetOrderFormDto.getQuantity());
+        createSetOrderRequestDto.setTicker(createSetOrderFormDto.getTicker());
+        createSetOrderRequestDto.setTransactionPrice(createSetOrderFormDto.getTransactionPrice());
+        createSetOrderRequestDto.setOrderType(orderType);
         createSetOrderRequestDto.setTrailingStopLossAmount(createSetOrderFormDto.getTrailingStopLoss());
 
         return createSetOrderRequestDto;
