@@ -1,6 +1,7 @@
 package com.trading.app.tradingapp.service.impl;
 
 import com.ib.client.*;
+import com.ib.contracts.FutContract;
 import com.trading.app.tradingapp.dto.OptionType;
 import com.trading.app.tradingapp.dto.SequenceTracker;
 import com.trading.app.tradingapp.dto.response.MarketDataDto;
@@ -10,11 +11,13 @@ import com.trading.app.tradingapp.persistance.repository.ContractRepository;
 import com.trading.app.tradingapp.persistance.repository.OrderRepository;
 import com.trading.app.tradingapp.service.BaseService;
 import com.trading.app.tradingapp.service.ContractService;
+import com.trading.app.tradingapp.service.SystemConfigService;
 import com.trading.app.tradingapp.util.RequestMarketDataThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
 import javax.persistence.EntityManager;
@@ -90,6 +93,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Resource
     private ContractRepository contractRepository;
+
+    @Resource
+    private SystemConfigService systemConfigService;
 
     @Resource
     private OrderRepository orderRepository;
@@ -236,13 +242,26 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     }
 
     @Override
-    public Contract createStockContract(String ticker) {
-        Contract contract = new Contract();
-        contract.symbol(ticker);
-        contract.currency(CURRENCY);
-        // ABNB does not work with SMART exchange
-        contract.exchange("ABNB".equalsIgnoreCase(ticker) ? ISLAND_EXCHANGE : EXCHANGE);
-        contract.secType(SECURITY_TYPE);
+    public Contract createContract(String ticker) {
+
+        Optional<ContractEntity> contractEntity = getContractRepository().findById(ticker);
+        if(contractEntity.isPresent() && Types.SecType.FUT.name().equalsIgnoreCase(contractEntity.get().getSecType())){
+            return createFuturesContract(ticker, contractEntity.get().getNextFutDate());
+        } else {
+            Contract contract = new Contract();
+            contract.symbol(ticker);
+            contract.currency(CURRENCY);
+            // ABNB does not work with SMART exchange
+            contract.exchange("ABNB".equalsIgnoreCase(ticker) ? ISLAND_EXCHANGE : EXCHANGE);
+            contract.secType(SECURITY_TYPE);
+            return contract;
+        }
+    }
+
+    @Override
+    public Contract createFuturesContract(String ticker, String lastTradeDateOrContractMonth) {
+        Contract contract =  new FutContract(ticker,lastTradeDateOrContractMonth);
+        contract.exchange("CME");
         return contract;
     }
 
@@ -379,28 +398,74 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         }
     }
 
-    private void updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice) {
+    @Override
+    public void updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice) {
         Optional<OrderEntity> orderEntityOptional = getOrderRepository().findById(orderId);
         if (orderEntityOptional.isPresent()) {
             OrderEntity orderEntity = orderEntityOptional.get();
             orderEntity.setOrderStatus(status);
             orderEntity.setFilled(filled);
+            Double previousRemaining = orderEntity.getRemaining();
             orderEntity.setRemaining(remaining);
             orderEntity.setAvgFillPrice(avgFillPrice);
             orderEntity.setMktCapPrice(mktCapPrice);
             orderEntity.setWhyHeld(whyHeld);
 
-            // Set Realized PNL, if any of the child orders are filled completely
-            if (FILLED_STATUS.equalsIgnoreCase(status) && null != orderEntity.getParentOrder()) {
-                OrderEntity parentOrderEntity = orderEntity.getParentOrder();
-                double fillPriceDiff = ((orderEntity.getAvgFillPrice() - parentOrderEntity.getAvgFillPrice()) * (com.trading.app.tradingapp.dto.OrderType.BUY.toString().equalsIgnoreCase(parentOrderEntity.getOrderAction()) ? 1 : -1));
-                parentOrderEntity.setRealizedPNL(roundOffDoubleForPriceDecimalFormat(fillPriceDiff * orderEntity.getFilled()));
-                getOrderRepository().save(parentOrderEntity);
+            if(FILLED_STATUS.equalsIgnoreCase(status)) {
+                // Set Realized PNL, if any of the child orders are filled completely
+                if (null != orderEntity.getParentOrder()) {
+                    OrderEntity parentOrderEntity = orderEntity.getParentOrder();
+                    double fillPriceDiff = ((orderEntity.getAvgFillPrice() - parentOrderEntity.getAvgFillPrice()) * (com.trading.app.tradingapp.dto.OrderType.BUY.toString().equalsIgnoreCase(parentOrderEntity.getOrderAction()) ? 1 : -1));
+                    parentOrderEntity.setRealizedPNL(roundOffDoubleForPriceDecimalFormat(fillPriceDiff * orderEntity.getFilled()));
+                    getOrderRepository().save(parentOrderEntity);
+                }
+
+                if (previousRemaining != null && previousRemaining > remaining) {
+                    List<OrderEntity> ocaOrders = new ArrayList<>();
+                    getOrderRepository().findAll().forEach(order -> {
+                        if (order.getParentOcaOrder() != null && orderId == order.getParentOcaOrder().getOrderId()) {
+                            ocaOrders.add(order);
+                        }
+                    });
+
+                    if (!CollectionUtils.isEmpty(ocaOrders)) {
+                        LOGGER.debug("Transmitting OCA orders >> " + ocaOrders.size());
+                        ocaOrders.forEach(ocaOrderEntity -> transmitOrder(prepareOrderForTransmit(ocaOrderEntity, filled), ocaOrderEntity.getSymbol()));
+                    }
+                }
             }
 
             orderEntity.setStatusUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
             getOrderRepository().save(orderEntity);
         }
+    }
+
+
+    private Order prepareOrderForTransmit(OrderEntity orderEntity, double filledQty){
+        Order transmitOrder = new Order();
+        transmitOrder.orderId(orderEntity.getOrderId());
+        transmitOrder.action(orderEntity.getOrderAction());
+        transmitOrder.orderType(orderEntity.getOrderType());
+        transmitOrder.displaySize(0);
+        transmitOrder.totalQuantity(filledQty);
+        if("STP".equalsIgnoreCase(orderEntity.getOrderType())){
+            transmitOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(orderEntity.getTransactionPrice()));
+        } else {
+            transmitOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(orderEntity.getTransactionPrice()));
+        }
+        transmitOrder.tif(Types.TimeInForce.GTC);
+        transmitOrder.outsideRth(true);
+        transmitOrder.account(getTradingAccount());
+        transmitOrder.ocaGroup("OCA_"+orderEntity.getParentOcaOrder().getOrderId());
+        transmitOrder.ocaType(1);
+
+        return transmitOrder;
+    }
+
+    public void transmitOrder(Order order, String ticker){
+        order.transmit(true);
+        Contract contract = createContract(ticker);
+        eClientSocket.placeOrder(order.orderId(), contract, order);
     }
 
 
@@ -482,7 +547,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         // LOGGER.info("Tick Price data: Ticker Id:{}, Field: {}, Price: {}, CanAutoExecute: {}, pastLimit: {}, pre-open: {}", tickerId, fieldName, price, attribs.canAutoExecute(), attribs.pastLimit(), attribs.preOpen());
 
         if (field == LTP_FIELD) {
-            LOGGER.debug("Updated LTP received for tracker: Ticker Id:{}, Price: {}", tickerId, price);
+            // LOGGER.info("Updated LTP received for tracker: Ticker Id:{}, Price: {}", tickerId, price);
             ContractEntity contractEntity = getContractByTickerId(tickerId);
             if (null != contractEntity) {
                 contractEntity.setLtp(price);
@@ -555,10 +620,10 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public void orderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, int permId, int parentId, double lastFillPrice, int clientId, String whyHeld, double mktCapPrice) {
-        LOGGER.debug("Got order status for order: [{}]", orderId);
-        LOGGER.debug("Data: status:[{}], filled:[{}], remaining:[{}], avgFillPrice:[{}], parent order id:[{}], clientId:[{}], mktCapPrice:[{}], whyHeld:[{}]", status, filled, remaining, avgFillPrice, parentId, clientId, mktCapPrice, whyHeld);
+        //LOGGER.info("Got order status for order: [{}]", orderId);
+        LOGGER.info("Data: status:[{}], filled:[{}], remaining:[{}], avgFillPrice:[{}], parent order id:[{}], clientId:[{}], mktCapPrice:[{}], whyHeld:[{}]", status, filled, remaining, avgFillPrice, parentId, clientId, mktCapPrice, whyHeld);
         updateOrderStatus(orderId, status, filled, remaining, avgFillPrice, whyHeld, mktCapPrice);
-        LOGGER.debug("Order status is updated in the database for order: [{}]", orderId);
+        LOGGER.info("Order status is updated in the database for order: [{}]", orderId);
 
         // If order is Filled
         if (FILLED_STATUS.equalsIgnoreCase(status)) {
@@ -979,5 +1044,17 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     public void setContractDetailsMap(Map<Integer, ContractDetails> contractDetailsMap) {
         this.contractDetailsMap = contractDetailsMap;
+    }
+
+    public SystemConfigService getSystemConfigService() {
+        return systemConfigService;
+    }
+
+    public void setSystemConfigService(SystemConfigService systemConfigService) {
+        this.systemConfigService = systemConfigService;
+    }
+
+    private String getTradingAccount() {
+        return getSystemConfigService().getString("tws.trading.account");
     }
 }

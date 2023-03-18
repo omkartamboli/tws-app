@@ -4,6 +4,7 @@ import com.ib.client.Contract;
 import com.ib.client.ContractDetails;
 import com.ib.client.EClientSocket;
 
+import com.ib.client.Order;
 import com.trading.app.tradingapp.dto.OrderType;
 import com.trading.app.tradingapp.dto.response.MarketDataDto;
 import com.trading.app.tradingapp.persistance.entity.ContractEntity;
@@ -19,7 +20,9 @@ public interface BaseService {
 
     RequestMarketDataThread startMarketDataStreamForContract(Contract contract) throws Exception;
 
-    Contract createStockContract(String ticker);
+    Contract createContract(String ticker);
+
+    Contract createFuturesContract(String ticker, String lastTradeDateOrContractMonth);
 
     Contract createOptionsContract(String ticker, Double strike, String dateYYYYMMDD, String callOrPut);
 
@@ -30,4 +33,8 @@ public interface BaseService {
     ContractEntity createContractEntity(Contract contract);
 
     ContractEntity getContractByTickerSymbol(String tickerSymbol);
+
+    void transmitOrder(Order order, String ticker);
+
+    public void updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice);
 }

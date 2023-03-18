@@ -1,10 +1,8 @@
 package com.trading.app.tradingapp.persistance.entity;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.ManyToOne;
+import javax.persistence.*;
 import java.sql.Timestamp;
+import java.util.List;
 
 @Entity
 public class OrderEntity {
@@ -45,6 +43,9 @@ public class OrderEntity {
     @ManyToOne
     private OrderEntity parentOrder;
 
+    @ManyToOne
+    private OrderEntity parentOcaOrder;
+
     @Column(nullable = false)
     private String currency;
 
@@ -78,6 +79,10 @@ public class OrderEntity {
     private Boolean transmit;
 
     private Timestamp statusUpdateTimestamp;
+
+    @OneToMany(targetEntity=OrderEntity.class, mappedBy="parentOcaOrder", fetch=FetchType.EAGER)
+    @ElementCollection
+    private List<OrderEntity> ocaOrders;
 
     public String getSymbol() {
         return symbol;
@@ -317,5 +322,21 @@ public class OrderEntity {
 
     public void setStopLossTriggerPrice(Double stopLossTriggerPrice) {
         this.stopLossTriggerPrice = stopLossTriggerPrice;
+    }
+
+    public List<OrderEntity> getOcaOrders() {
+        return ocaOrders;
+    }
+
+    public void setOcaOrders(List<OrderEntity> ocaOrders) {
+        this.ocaOrders = ocaOrders;
+    }
+
+    public OrderEntity getParentOcaOrder() {
+        return parentOcaOrder;
+    }
+
+    public void setParentOcaOrder(OrderEntity parentOcaOrder) {
+        this.parentOcaOrder = parentOcaOrder;
     }
 }

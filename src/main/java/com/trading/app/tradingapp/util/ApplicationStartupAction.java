@@ -4,8 +4,10 @@ import com.ib.client.EClientSocket;
 import com.trading.app.tradingapp.persistance.entity.ContractEntity;
 import com.trading.app.tradingapp.persistance.entity.SystemConfigEntity;
 import com.trading.app.tradingapp.persistance.repository.ContractRepository;
+import com.trading.app.tradingapp.persistance.repository.OrderRepository;
 import com.trading.app.tradingapp.persistance.repository.SystemConfigRepository;
 import com.trading.app.tradingapp.service.BaseService;
+import com.trading.app.tradingapp.service.OrderService;
 import com.trading.app.tradingapp.service.SystemConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +26,9 @@ public class ApplicationStartupAction implements ApplicationListener<Application
 
     @Resource
     private ContractRepository contractRepository;
+
+    @Resource
+    private OrderService orderService;
 
     @Resource
     private BaseService baseService;
@@ -76,6 +81,9 @@ public class ApplicationStartupAction implements ApplicationListener<Application
         // store properties file config in DB
         initiateSystemConfig();
 
+        // delete all inactive orders
+        orderService.deleteAllInactiveOrders();
+
         List<ContractEntity> contractEntityList = contractRepository.findAllByOrderBySymbolAsc();
 
         if (contractEntityList == null || contractEntityList.isEmpty()) {
@@ -89,7 +97,7 @@ public class ApplicationStartupAction implements ApplicationListener<Application
             if (null != connection) {
                 contractEntityList.forEach(contractEntity -> {
                     try {
-                        RequestMarketDataThread requestMarketDataThread = new RequestMarketDataThread(getBaseService().createStockContract(contractEntity.getSymbol()), getContractRepository(), connection);
+                        RequestMarketDataThread requestMarketDataThread = new RequestMarketDataThread(getBaseService().createContract(contractEntity.getSymbol()), getContractRepository(), connection);
                         requestMarketDataThread.start();
                         LOGGER.info("Initiate Market Data stream for ticker [{}] after application startup", contractEntity.getSymbol());
                     } catch (Exception ex) {

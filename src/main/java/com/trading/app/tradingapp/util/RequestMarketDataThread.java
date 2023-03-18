@@ -3,6 +3,7 @@ package com.trading.app.tradingapp.util;
 import com.ib.client.Contract;
 import com.ib.client.EClientSocket;
 import com.ib.client.TagValue;
+import com.ib.client.Types;
 import com.trading.app.tradingapp.persistance.entity.ContractEntity;
 import com.trading.app.tradingapp.persistance.repository.ContractRepository;
 import com.trading.app.tradingapp.service.impl.BaseServiceImpl;
@@ -46,6 +47,10 @@ public class RequestMarketDataThread extends Thread {
     public void run() {
         Optional<ContractEntity> contractEntityOptional = getContractRepository().findById(getContract().symbol());
         if (contractEntityOptional.isPresent()) {
+//            if(Types.SecType.FUT.name().equalsIgnoreCase(contract.secType().name())){
+//                contract.exchange("CBOE");
+//                LOGGER.info("Changing the exchange name for [{}] before requesting market data", contract.symbol());
+//            }
             getConnection().reqMktData(contractEntityOptional.get().getTickerId(), contract, null, false, false, new ArrayList<TagValue>());
             LOGGER.info("Requested market data for [{}] in thread [{}]", contract.symbol(), this.getName());
         }

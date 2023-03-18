@@ -1,5 +1,6 @@
 package com.trading.app.tradingapp.populator;
 
+import com.ib.client.Types;
 import com.trading.app.tradingapp.dto.OrderType;
 import com.trading.app.tradingapp.dto.form.CreateSetOrderFormDto;
 import com.trading.app.tradingapp.dto.form.TickerFormsGroup;

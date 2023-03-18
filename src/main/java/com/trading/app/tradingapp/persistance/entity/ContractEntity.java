@@ -50,6 +50,8 @@ public class ContractEntity {
 
     private double step5;
 
+    private String nextFutDate;
+
 
     public String getSymbol() {
         return symbol;
@@ -193,5 +195,13 @@ public class ContractEntity {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public String getNextFutDate() {
+        return nextFutDate;
+    }
+
+    public void setNextFutDate(String nextFutDate) {
+        this.nextFutDate = nextFutDate;
     }
 }

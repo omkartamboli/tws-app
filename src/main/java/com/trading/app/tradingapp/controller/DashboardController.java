@@ -36,7 +36,7 @@ public class DashboardController {
     @Resource
     private ContractService contractService;
 
-    private static final String DEFAULT_SYMBOL = "TSLA";
+    private static final String DEFAULT_SYMBOL = "NQ";
 
     //private static final Logger LOGGER = LoggerFactory.getLogger(DashboardController.class);
 

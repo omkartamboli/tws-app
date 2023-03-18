@@ -42,7 +42,7 @@ public class ContractServiceImpl implements ContractService {
     public GetMarketDataResponseDto getMarketData(String ticker) {
         LOGGER.info("Fetching Market Data for ticker [{}]", ticker);
         try {
-            Contract contract = getBaseService().createStockContract(ticker);
+            Contract contract = getBaseService().createContract(ticker);
             return getSuccessGetMarketDataResult(ticker, getBaseService().getMarketDataForContract(contract, true));
         } catch (Exception ex) {
             LOGGER.error("Could not fetch Market Data for ticker [{}]. Exception: [{}]", ticker, ex.getMessage());
@@ -54,7 +54,7 @@ public class ContractServiceImpl implements ContractService {
     public void createContractEntity(String ticker) {
         LOGGER.info("Creating contract entity for ticker [{}]", ticker);
         try {
-            Contract contract = getBaseService().createStockContract(ticker);
+            Contract contract = getBaseService().createContract(ticker);
             getBaseService().createContractEntity(contract);
         } catch (Exception ex) {
             LOGGER.error("Could not create contract entity for ticker [{}]. Exception: [{}]", ticker, ex.getMessage());
@@ -75,7 +75,7 @@ public class ContractServiceImpl implements ContractService {
             // initiate ticker sequence tracker for BUY
             addUpdateTickerSequenceTracker(ticker, tpMargin, OrderType.BUY);
 
-            Contract contract = getBaseService().createStockContract(ticker);
+            Contract contract = getBaseService().createContract(ticker);
 
             // start market data stream for the ticker
             getBaseService().startMarketDataStreamForContract(contract);
@@ -168,7 +168,7 @@ public class ContractServiceImpl implements ContractService {
             // initiate ticker sequence tracker for Sell
             addUpdateTickerSequenceTracker(ticker, tpMargin, OrderType.SELL);
 
-            Contract contract = getBaseService().createStockContract(ticker);
+            Contract contract = getBaseService().createContract(ticker);
 
             // start market data stream for the ticker
             getBaseService().startMarketDataStreamForContract(contract);

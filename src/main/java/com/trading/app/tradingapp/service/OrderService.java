@@ -23,4 +23,6 @@ public interface OrderService {
     UpdateSetOrderResponseDto updateOrder(UpdateSetOrderRequestDto updateSetOrderRequestDto);
 
     UpdateSetOrderResponseDto cancelOrder(UpdateSetOrderRequestDto updateSetOrderRequestDto);
+
+    void deleteAllInactiveOrders();
 }

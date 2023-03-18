@@ -15,6 +15,7 @@ import com.trading.app.tradingapp.util.JsonSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
 import java.util.*;
@@ -51,20 +52,76 @@ public class OrderServiceImpl implements OrderService {
         //TODO: Add request object validation
         try {
             EClientSocket eClientSocket = getBaseService().getConnection();
-            Contract contract = getBaseService().createStockContract(createSetOrderRequestDto.getTicker());
+            Contract contract = getBaseService().createContract(createSetOrderRequestDto.getTicker());
             List<Order> bracketOrders;
 
             if (null != createSetOrderRequestDto.getStopLossPrice()) {
-                bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
+                if("NQ".equalsIgnoreCase(contract.symbol())) {
+                    bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 10);
+                } else {
+                    //bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
+                    bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 1);
+                }
             } else if (null != createSetOrderRequestDto.getTrailingStopLossAmount()) {
                 bracketOrders = createBracketOrderWithTrailingSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTrailingStopLossAmount(), contract, orderTrigger, orderTriggerInterval);
             } else {
                 bracketOrders = createBracketOrderWithTP(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), contract, orderTrigger, orderTriggerInterval);
             }
 
-            for (Order bracketOrder : bracketOrders) {
-                eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
+
+            if("NQ".equalsIgnoreCase(contract.symbol())){
+                for (Order bracketOrder : bracketOrders) {
+                    if(OrderType.STP.equals(bracketOrder.orderType())){
+                        LOGGER.info("->>>>>>>>>> inside SL order "+ contract.symbol());
+                        eClientSocket.placeOrder(bracketOrder.orderId(), getBaseService().createContract("MNQ"), bracketOrder);
+                    } else {
+                        eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
+                    }
+                }
+            } else {
+                for (Order bracketOrder : bracketOrders) {
+                    eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
+                }
             }
+
+//            try {
+//                Thread.sleep(10000);
+//            } catch (InterruptedException ie) {
+//                // do nothing
+//            }
+//
+//            getBaseService().updateOrderStatus(bracketOrders.get(0).orderId(), "Filled",  25,  75, 0.0d, null, 0.0d);
+//
+//            try {
+//                Thread.sleep(10000);
+//            } catch (InterruptedException ie) {
+//                // do nothing
+//            }
+//
+//            getBaseService().updateOrderStatus(bracketOrders.get(0).orderId(), "Filled",  50,  50, 0.0d, null, 0.0d);
+//
+//            try {
+//                Thread.sleep(10000);
+//            } catch (InterruptedException ie) {
+//                // do nothing
+//            }
+//
+//            getBaseService().updateOrderStatus(bracketOrders.get(0).orderId(), "Filled",  100,  0, 0.0d, null, 0.0d);
+//
+////
+//            List<OrderEntity> ocaOrders = new ArrayList<>();
+//            int orderId = bracketOrders.get(0).orderId();
+//            getOrderRepository().findAll().forEach(order -> {if(order.getParentOcaOrder() !=null && orderId == order.getParentOcaOrder().getOrderId()) {
+//                ocaOrders.add(order);
+//            }});
+//
+//            LOGGER.info("Transmitting OCA orders >> "+ocaOrders.size());
+//            getBaseService().transmitOrder(bracketOrders.get(1), contract.symbol());
+//            getBaseService().transmitOrder(bracketOrders.get(2), contract.symbol());
+
+
+
+
             return getSuccessCreateSetOrderResult(bracketOrders.stream().map(Order::orderId).collect(Collectors.toList()));
         } catch (Exception ex) {
             LOGGER.error("Could not place an order.", ex);
@@ -76,7 +133,7 @@ public class OrderServiceImpl implements OrderService {
     public CreateSetOrderResponseDto createSLOrder(CreateSetOrderRequestDto createSetOrderRequestDto, String orderTrigger, String orderTriggerInterval) {
         try {
             EClientSocket eClientSocket = getBaseService().getConnection();
-            Contract contract = getBaseService().createStockContract(createSetOrderRequestDto.getTicker());
+            Contract contract = getBaseService().createContract(createSetOrderRequestDto.getTicker());
             List<Order> bracketOrders;
 
             if (null == createSetOrderRequestDto.getTrailingStopLossAmount()) {
@@ -142,7 +199,7 @@ public class OrderServiceImpl implements OrderService {
 
                 EClientSocket eClientSocket = getBaseService().getConnection();
 
-                Contract contract = Boolean.TRUE.equals(orderToBeUpdated.getOptionsOrder()) ? getBaseService().createOptionsContract(orderToBeUpdated.getSymbol(), orderToBeUpdated.getOptionStrikePrice(), orderToBeUpdated.getOptionExpiryDate(), orderToBeUpdated.getOptionType()) : getBaseService().createStockContract(orderToBeUpdated.getSymbol());
+                Contract contract = Boolean.TRUE.equals(orderToBeUpdated.getOptionsOrder()) ? getBaseService().createOptionsContract(orderToBeUpdated.getSymbol(), orderToBeUpdated.getOptionStrikePrice(), orderToBeUpdated.getOptionExpiryDate(), orderToBeUpdated.getOptionType()) : getBaseService().createContract(orderToBeUpdated.getSymbol());
 
                 Order updateOrder = updateOrder(orderToBeUpdated.getOrderId(), updateSetOrderRequestDto.getParentOrderId(), orderToBeUpdated.getOrderAction(), updateSetOrderRequestDto.getQuantity(), updateSetOrderRequestDto.getTargetPrice(), updateSetOrderRequestDto.getTriggerPrice(), contract, updateSetOrderRequestDto.getOrderType(), orderToBeUpdated.getOrderTrigger(), orderToBeUpdated.getOrderTriggerInterval());
 
@@ -175,7 +232,7 @@ public class OrderServiceImpl implements OrderService {
         //TODO: Add request object validation
         try {
             EClientSocket eClientSocket = getBaseService().getConnection();
-            Contract contract = getBaseService().createStockContract(createLtpOrderRequestDto.getTicker());
+            Contract contract = getBaseService().createContract(createLtpOrderRequestDto.getTicker());
             double contractLtp = getBaseService().getMarketDataForContract(contract, false).getLtp();
             double targetPrice = com.trading.app.tradingapp.dto.OrderType.BUY.equals(createLtpOrderRequestDto.getOrderType()) ? contractLtp + createLtpOrderRequestDto.getTargetPriceOffset() : contractLtp - createLtpOrderRequestDto.getTargetPriceOffset();
 
@@ -203,7 +260,7 @@ public class OrderServiceImpl implements OrderService {
                 if (qualifyOutOfHoursOrderFilter()) {
                     try {
                         EClientSocket eClientSocket = getBaseService().getConnection();
-                        Contract contract = getBaseService().createStockContract(createDivergenceTriggerOrderRequestDto.getTicker());
+                        Contract contract = getBaseService().createContract(createDivergenceTriggerOrderRequestDto.getTicker());
 
                         List<Order> bracketOrders;
 
@@ -284,7 +341,7 @@ public class OrderServiceImpl implements OrderService {
 
         try {
             EClientSocket eClientSocket = getBaseService().getConnection();
-            Contract contract = getBaseService().createStockContract(createPivotBreakOrderRequestDto.getTicker());
+            Contract contract = getBaseService().createContract(createPivotBreakOrderRequestDto.getTicker());
             double tradePrice = createPivotBreakOrderRequestDto.getClose();
             double targetPricePercentage = (null == createPivotBreakOrderRequestDto.getTpOffsetPrice() ? 0.5d : createPivotBreakOrderRequestDto.getTpOffsetPrice());
             double targetPriceOffset = tradePrice * targetPricePercentage / 100.0d * (createPivotBreakOrderRequestDto.getPivotbreakval() > 0 ? 1 : -1);
@@ -543,6 +600,74 @@ public class OrderServiceImpl implements OrderService {
         return bracketOrder;
     }
 
+
+    private List<Order> createBracketOrderWithTPWithOCAHedge(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice, double stopLossPrice, Contract contract, String orderTrigger, String orderTriggerInterval, int hedgeQtyMultiplier) {
+
+        LOGGER.info("Creating Hedge OCA bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], tp=[{}], sl=[{}], interval=[{}]", orderTrigger, parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice, stopLossPrice, orderTriggerInterval);
+
+
+        List<Order> bracketOrder = new ArrayList<>();
+
+        //This will be our main or "parent" order
+        Order parent = new Order();
+        parent.orderId(parentOrderId);
+        parent.action(action);
+        parent.orderType(OrderType.LMT);
+        parent.displaySize(0);
+        parent.totalQuantity(quantity);
+        parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
+        parent.tif(Types.TimeInForce.GTC);
+        parent.outsideRth(true);
+        parent.account(getTradingAccount());
+        parent.transmit(true);
+
+        bracketOrder.add(parent);
+
+        OrderEntity parentOrderEntity = persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false,null, null);
+
+
+        Order takeProfit = new Order();
+        takeProfit.orderId(parent.orderId() + 1);
+        takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+        takeProfit.orderType(OrderType.LMT);
+        takeProfit.displaySize(0);
+        takeProfit.totalQuantity(quantity);
+        takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
+        takeProfit.tif(Types.TimeInForce.GTC);
+        takeProfit.outsideRth(true);
+        //takeProfit.parentId(parentOrderId);
+        takeProfit.account(getTradingAccount());
+        takeProfit.transmit(false);
+        takeProfit.ocaGroup("OCA_"+parentOrderId);
+        takeProfit.ocaType(1);
+
+        bracketOrder.add(takeProfit);
+        OrderEntity takeProfitOrderEntity = persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false, null, parentOrderEntity);
+
+        Order ocaHedge = new Order();
+        ocaHedge.orderId(parent.orderId() + 2);
+        ocaHedge.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+        ocaHedge.orderType(OrderType.STP);
+        //Stop trigger price
+        ocaHedge.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+        ocaHedge.tif(Types.TimeInForce.GTC);
+        ocaHedge.outsideRth(true);
+        ocaHedge.displaySize(0);
+        ocaHedge.totalQuantity(quantity * hedgeQtyMultiplier);
+        ocaHedge.account(getTradingAccount());
+        ocaHedge.transmit(false);
+        ocaHedge.ocaGroup("OCA_"+parentOrderId);
+        ocaHedge.ocaType(1);
+
+
+        bracketOrder.add(ocaHedge);
+        OrderEntity ocaHedgeOrderEntity = persistOrder(ocaHedge, contract, orderTrigger, orderTriggerInterval, false,null, parentOrderEntity);
+
+
+
+        return bracketOrder;
+    }
+
     private List<Order> createBracketOrderWithTP(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice, Contract contract, String orderTrigger, String orderTriggerInterval) {
 
         LOGGER.info("Creating bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], tp=[{}], sl=[{}], interval=[{}]", orderTrigger, parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice, "NOT_APPLICABLE", orderTriggerInterval);
@@ -626,7 +751,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
-    private void persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType, boolean waitForOrdersToBeCreated) {
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder) {
         OrderEntity orderEntity = new OrderEntity();
         orderEntity.setOrderId(order.orderId());
         orderEntity.setSymbol(contract.symbol());
@@ -664,6 +789,12 @@ public class OrderServiceImpl implements OrderService {
             getOrderRepository().findById(order.parentId()).ifPresent(orderEntity::setParentOrder);
         }
         orderEntity.setCreatedTimestamp(new java.sql.Timestamp(new Date().getTime()));
+        if(!CollectionUtils.isEmpty(ocaOrders)) {
+            orderEntity.setOcaOrders(ocaOrders);
+        }
+        if(parentOcaOrder !=null){
+            orderEntity.setParentOcaOrder(parentOcaOrder);
+        }
         getOrderRepository().save(orderEntity);
 
         if (waitForOrdersToBeCreated) {
@@ -673,13 +804,48 @@ public class OrderServiceImpl implements OrderService {
                 // do nothing
             }
         }
+
+        Optional<OrderEntity> orderEntity1 = getOrderRepository().findById(order.orderId());
+        if(orderEntity1.isPresent()){
+            return orderEntity1.get();
+        } else {
+            return orderEntity;
+        }
     }
 
-    private void persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated) {
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated) {
+     return persistOrder( order,  contract,  orderTrigger,  orderTriggerInterval,  waitForOrdersToBeCreated, null, null);
+    }
+
+
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder) {
         if (BaseServiceImpl.OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType())) {
-            persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated);
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated, null, null);
         } else {
-            persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated);
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated, ocaOrders, parentOcaOrder);
+        }
+    }
+
+    @Override
+    public void deleteAllInactiveOrders(){
+        Iterable<OrderEntity> ordersIterable = getOrderRepository().findAll();
+        List<OrderEntity> orders = new ArrayList<>();
+
+        if(ordersIterable !=null){
+            ordersIterable.forEach(orders::add);
+        }
+
+        if(!orders.isEmpty()) {
+            List<OrderEntity> inactiveOrders = orders.stream().filter(order -> "PreSubmitted".equalsIgnoreCase(order.getOrderStatus()) || "Submitted".equalsIgnoreCase(order.getOrderStatus()) || "Inactive".equalsIgnoreCase(order.getOrderStatus()) || "Cancelled".equalsIgnoreCase(order.getOrderStatus())).collect(Collectors.toList());
+
+            LOGGER.info("Deleting {} inactive orders", inactiveOrders.size());
+
+            List<OrderEntity> childOrders =  inactiveOrders.stream().filter(order -> order.getParentOrder()!=null || order.getParentOcaOrder() !=null).collect(Collectors.toList());
+
+            List<OrderEntity> parentOrders =  inactiveOrders.stream().filter(order -> order.getParentOrder()==null && order.getParentOcaOrder()==null).collect(Collectors.toList());
+
+            getOrderRepository().deleteAll(childOrders);
+            getOrderRepository().deleteAll(parentOrders);
         }
     }
 
