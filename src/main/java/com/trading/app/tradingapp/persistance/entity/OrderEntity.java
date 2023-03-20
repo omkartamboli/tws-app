@@ -80,6 +80,8 @@ public class OrderEntity {
 
     private Timestamp statusUpdateTimestamp;
 
+    private Integer ocaHedgeMultiplier;
+
     @OneToMany(targetEntity=OrderEntity.class, mappedBy="parentOcaOrder", fetch=FetchType.EAGER)
     @ElementCollection
     private List<OrderEntity> ocaOrders;
@@ -338,5 +340,13 @@ public class OrderEntity {
 
     public void setParentOcaOrder(OrderEntity parentOcaOrder) {
         this.parentOcaOrder = parentOcaOrder;
+    }
+
+    public Integer getOcaHedgeMultiplier() {
+        return ocaHedgeMultiplier;
+    }
+
+    public void setOcaHedgeMultiplier(Integer ocaHedgeMultiplier) {
+        this.ocaHedgeMultiplier = ocaHedgeMultiplier;
     }
 }

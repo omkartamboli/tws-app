@@ -34,7 +34,7 @@ public interface BaseService {
 
     ContractEntity getContractByTickerSymbol(String tickerSymbol);
 
-    void transmitOrder(Order order, String ticker);
+    void transmitOrder(Order order, String ticker, boolean transmitFla);
 
     public void updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice);
 }

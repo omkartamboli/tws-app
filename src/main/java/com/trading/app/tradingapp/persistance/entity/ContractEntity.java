@@ -52,6 +52,10 @@ public class ContractEntity {
 
     private String nextFutDate;
 
+    private Double defaultStopLoss;
+
+    private Integer ocaHedgeMultiplier;
+
 
     public String getSymbol() {
         return symbol;
@@ -203,5 +207,21 @@ public class ContractEntity {
 
     public void setNextFutDate(String nextFutDate) {
         this.nextFutDate = nextFutDate;
+    }
+
+    public Double getDefaultStopLoss() {
+        return defaultStopLoss;
+    }
+
+    public void setDefaultStopLoss(Double defaultStopLoss) {
+        this.defaultStopLoss = defaultStopLoss;
+    }
+
+    public Integer getOcaHedgeMultiplier() {
+        return ocaHedgeMultiplier;
+    }
+
+    public void setOcaHedgeMultiplier(Integer ocaHedgeMultiplier) {
+        this.ocaHedgeMultiplier = ocaHedgeMultiplier;
     }
 }

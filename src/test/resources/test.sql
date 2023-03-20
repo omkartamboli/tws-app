@@ -34,7 +34,12 @@ delete from tradingApp.order_entity where order_status='Submitted';
 
 SELECT * FROM tradingApp.order_entity; 
 
--- delete from tradingApp.contract_entity where ticker_id > 2;
+
+update  tradingApp.contract_entity set default_stop_loss=10 where  default_stop_loss is null;
+
+update  tradingApp.contract_entity set oca_Hedge_Multiplier=1;
+
+-- delete from tradingApp.contract_entity;
 
 -- drop table tradingApp.contract_entity;
 

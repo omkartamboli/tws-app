@@ -429,8 +429,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
                     });
 
                     if (!CollectionUtils.isEmpty(ocaOrders)) {
-                        LOGGER.debug("Transmitting OCA orders >> " + ocaOrders.size());
-                        ocaOrders.forEach(ocaOrderEntity -> transmitOrder(prepareOrderForTransmit(ocaOrderEntity, filled), ocaOrderEntity.getSymbol()));
+                        LOGGER.warn("Transmitting OCA orders >> " + ocaOrders.size());
+                        ocaOrders.forEach(ocaOrderEntity -> transmitOrder(prepareOrderForTransmit(ocaOrderEntity, filled), ocaOrderEntity.getSymbol(),true));
                     }
                 }
             }
@@ -447,9 +447,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         transmitOrder.action(orderEntity.getOrderAction());
         transmitOrder.orderType(orderEntity.getOrderType());
         transmitOrder.displaySize(0);
-        transmitOrder.totalQuantity(filledQty);
+        transmitOrder.totalQuantity(filledQty * (orderEntity.getOcaHedgeMultiplier() == null ? 1 : orderEntity.getOcaHedgeMultiplier()));
         if("STP".equalsIgnoreCase(orderEntity.getOrderType())){
-            transmitOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(orderEntity.getTransactionPrice()));
+            transmitOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(orderEntity.getStopLossTriggerPrice()));
         } else {
             transmitOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(orderEntity.getTransactionPrice()));
         }
@@ -462,10 +462,10 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         return transmitOrder;
     }
 
-    public void transmitOrder(Order order, String ticker){
-        order.transmit(true);
-        Contract contract = createContract(ticker);
-        eClientSocket.placeOrder(order.orderId(), contract, order);
+    public void transmitOrder(Order order, String ticker, boolean transmitFlag){
+        order.transmit(transmitFlag);
+        LOGGER.warn("Transmitting order with ID >>" +order.orderId());
+        eClientSocket.placeOrder(order.orderId(), createContract(ticker), order);
     }
 
 
@@ -836,15 +836,18 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     @Override
     public void error(Exception e) {
 
+        LOGGER.error("Error : ",e);
     }
 
     @Override
     public void error(String str) {
-
+        LOGGER.error("Error : "+str);
     }
 
     @Override
     public void error(int id, int errorCode, String errorMsg) {
+
+        LOGGER.error("Error : id="+id+" code="+errorCode+" msg="+errorMsg);
 
     }
 

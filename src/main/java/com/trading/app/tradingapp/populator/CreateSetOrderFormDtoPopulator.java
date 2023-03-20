@@ -18,6 +18,10 @@ public class CreateSetOrderFormDtoPopulator {
             createSetOrderFormDto.setQuantity(contractEntity.getDefaultQuantity());
             createSetOrderFormDto.setTransactionPrice(contractEntity.getLtp());
 
+            if(contractEntity.getDefaultStopLoss() !=null) {
+                createSetOrderFormDto.setStopLoss(contractEntity.getDefaultStopLoss());
+            }
+
             createSetOrderFormDto.setTargetPriceOffsetBuyStep1(contractEntity.getStep1());
             createSetOrderFormDto.setTargetPriceOffsetBuyStep2(contractEntity.getStep2());
             createSetOrderFormDto.setTargetPriceOffsetBuyStep3(contractEntity.getStep3());

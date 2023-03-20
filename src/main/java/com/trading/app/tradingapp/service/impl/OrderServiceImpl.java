@@ -56,11 +56,11 @@ public class OrderServiceImpl implements OrderService {
             List<Order> bracketOrders;
 
             if (null != createSetOrderRequestDto.getStopLossPrice()) {
-                if("NQ".equalsIgnoreCase(contract.symbol())) {
+                if("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol())) {
                     bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 10);
                 } else {
-                    //bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
-                    bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 1);
+                    bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
+                    //bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 1);
                 }
             } else if (null != createSetOrderRequestDto.getTrailingStopLossAmount()) {
                 bracketOrders = createBracketOrderWithTrailingSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTrailingStopLossAmount(), contract, orderTrigger, orderTriggerInterval);
@@ -69,11 +69,10 @@ public class OrderServiceImpl implements OrderService {
             }
 
 
-            if("NQ".equalsIgnoreCase(contract.symbol())){
+            if("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol())){
                 for (Order bracketOrder : bracketOrders) {
                     if(OrderType.STP.equals(bracketOrder.orderType())){
-                        LOGGER.info("->>>>>>>>>> inside SL order "+ contract.symbol());
-                        eClientSocket.placeOrder(bracketOrder.orderId(), getBaseService().createContract("MNQ"), bracketOrder);
+                        eClientSocket.placeOrder(bracketOrder.orderId(), getBaseService().createContract("M"+contract.symbol()), bracketOrder);
                     } else {
                         eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
                     }
@@ -623,7 +622,7 @@ public class OrderServiceImpl implements OrderService {
 
         bracketOrder.add(parent);
 
-        OrderEntity parentOrderEntity = persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false,null, null);
+        OrderEntity parentOrderEntity = persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false,null, null, null);
 
 
         Order takeProfit = new Order();
@@ -642,7 +641,7 @@ public class OrderServiceImpl implements OrderService {
         takeProfit.ocaType(1);
 
         bracketOrder.add(takeProfit);
-        OrderEntity takeProfitOrderEntity = persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false, null, parentOrderEntity);
+        OrderEntity takeProfitOrderEntity = persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false, null, parentOrderEntity, null);
 
         Order ocaHedge = new Order();
         ocaHedge.orderId(parent.orderId() + 2);
@@ -661,7 +660,9 @@ public class OrderServiceImpl implements OrderService {
 
 
         bracketOrder.add(ocaHedge);
-        OrderEntity ocaHedgeOrderEntity = persistOrder(ocaHedge, contract, orderTrigger, orderTriggerInterval, false,null, parentOrderEntity);
+
+        Contract ocaHedgeContract = ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol()))? getBaseService().createContract("M"+contract.symbol()) : contract;
+        OrderEntity ocaHedgeOrderEntity = persistOrder(ocaHedge, ocaHedgeContract, orderTrigger, orderTriggerInterval, false,null, parentOrderEntity, hedgeQtyMultiplier);
 
 
 
@@ -751,7 +752,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
-    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder) {
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier) {
         OrderEntity orderEntity = new OrderEntity();
         orderEntity.setOrderId(order.orderId());
         orderEntity.setSymbol(contract.symbol());
@@ -776,6 +777,10 @@ public class OrderServiceImpl implements OrderService {
             orderEntity.setOptionExpiryDate(optionExpiryDate);
             orderEntity.setOptionType(optionType);
         }
+
+        // Set fields for hedge order
+        orderEntity.setOcaHedgeMultiplier(hedgeQtyMultiplier ==null? 1 : hedgeQtyMultiplier);
+
 
         // Set default status if Order is new
 
@@ -814,15 +819,19 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated) {
-     return persistOrder( order,  contract,  orderTrigger,  orderTriggerInterval,  waitForOrdersToBeCreated, null, null);
+        return persistOrder( order,  contract,  orderTrigger,  orderTriggerInterval,  waitForOrdersToBeCreated, null, null, null);
+    }
+
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, Integer hedgeQtyMultiplier) {
+     return persistOrder( order,  contract,  orderTrigger,  orderTriggerInterval,  waitForOrdersToBeCreated, null, null, hedgeQtyMultiplier);
     }
 
 
-    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder) {
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier) {
         if (BaseServiceImpl.OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType())) {
-            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated, null, null);
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated, null, null, null);
         } else {
-            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated, ocaOrders, parentOcaOrder);
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated, ocaOrders, parentOcaOrder, hedgeQtyMultiplier);
         }
     }
 
@@ -844,8 +853,22 @@ public class OrderServiceImpl implements OrderService {
 
             List<OrderEntity> parentOrders =  inactiveOrders.stream().filter(order -> order.getParentOrder()==null && order.getParentOcaOrder()==null).collect(Collectors.toList());
 
-            getOrderRepository().deleteAll(childOrders);
-            getOrderRepository().deleteAll(parentOrders);
+            childOrders.forEach(this::deleteOrderIfExists);
+            parentOrders.forEach(this::deleteOrderIfExists);
+        }
+    }
+
+    private void deleteOrderIfExists(OrderEntity orderEntity){
+        if(orderEntity !=null && orderEntity.getOrderId() != null) {
+            Optional<OrderEntity> orderToBeDeleted = getOrderRepository().findById(orderEntity.getOrderId());
+            if(orderToBeDeleted.isPresent()){
+                try {
+                    getOrderRepository().delete(orderToBeDeleted.get());
+                } catch (Exception ex){
+                    LOGGER.warn("Could not delete order with id "+orderEntity.getOrderId());
+                }
+            }
+
         }
     }
 
