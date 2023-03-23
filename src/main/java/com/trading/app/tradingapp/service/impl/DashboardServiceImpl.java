@@ -11,6 +11,7 @@ import com.trading.app.tradingapp.persistance.entity.OrderEntity;
 import com.trading.app.tradingapp.persistance.repository.ContractRepository;
 import com.trading.app.tradingapp.persistance.repository.OrderRepository;
 import com.trading.app.tradingapp.populator.TickerAndOrderModelDtoPopulator;
+import com.trading.app.tradingapp.service.BaseService;
 import com.trading.app.tradingapp.service.DashboardService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +33,9 @@ public class DashboardServiceImpl implements DashboardService {
     @Resource
     private ContractRepository contractRepository;
 
+    @Resource
+    private BaseService baseService;
+
     // Excluded statues for order query
     private List<String> orderStatuses = Arrays.asList("Cancelled", "Filled", "Inactive", "ApiCancelled");
 
@@ -39,6 +43,11 @@ public class DashboardServiceImpl implements DashboardService {
     public Map<CreateSetOrderFormDto, TickerFormsGroup> getTickerOrderModelMap() {
         Map<ContractEntity, List<OrderEntity>> contractOrderEntityMap = new HashMap<>();
 
+        try{
+            getBaseService().getConnection();
+        } catch (Exception ex){
+
+        }
         getContractRepository().findAllByOrderBySymbolAsc().forEach(contractEntity ->
                 {
                     if (contractEntity.isActive()) {
@@ -71,5 +80,13 @@ public class DashboardServiceImpl implements DashboardService {
 
     public void setContractRepository(ContractRepository contractRepository) {
         this.contractRepository = contractRepository;
+    }
+
+    public BaseService getBaseService() {
+        return baseService;
+    }
+
+    public void setBaseService(BaseService baseService) {
+        this.baseService = baseService;
     }
 }

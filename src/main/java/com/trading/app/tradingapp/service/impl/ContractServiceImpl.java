@@ -1,16 +1,19 @@
 package com.trading.app.tradingapp.service.impl;
 
 import com.ib.client.Contract;
+import com.ib.client.EClientSocket;
 import com.trading.app.tradingapp.dto.OrderType;
 import com.trading.app.tradingapp.dto.SequenceTracker;
 import com.trading.app.tradingapp.dto.request.CreateSetOrderRequestDto;
 import com.trading.app.tradingapp.dto.response.CreateSetOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.GetMarketDataResponseDto;
 import com.trading.app.tradingapp.dto.response.MarketDataDto;
+import com.trading.app.tradingapp.persistance.entity.ContractEntity;
 import com.trading.app.tradingapp.persistance.repository.ContractRepository;
 import com.trading.app.tradingapp.service.BaseService;
 import com.trading.app.tradingapp.service.ContractService;
 import com.trading.app.tradingapp.service.OrderService;
+import com.trading.app.tradingapp.util.RequestMarketDataThread;
 import com.trading.app.tradingapp.util.UpdateSequenceTrackerThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -245,6 +249,37 @@ public class ContractServiceImpl implements ContractService {
             LOGGER.info("Stopped buy sequence for ticker [{}]", tickerSymbol);
         } else {
             LOGGER.error("Could not stop buy sequence for ticker [{}]. Ticker sequence does not exist.", tickerSymbol);
+        }
+    }
+
+    @Override
+    public void startMarketDataFeed(final EClientSocket connection) {
+
+        if (connection == null || ! connection.isConnected()) {
+            LOGGER.error("Could not initiate Market Data stream as EClientSocket is not connected");
+        }
+
+        List<ContractEntity> contractEntityList = contractRepository.findAllByOrderBySymbolAsc();
+
+        if (contractEntityList == null || contractEntityList.isEmpty()) {
+            return;
+        }
+
+        try {
+            contractEntityList.forEach(contractEntity -> {
+                try {
+                    if (Boolean.TRUE.equals(contractEntity.isActive())) {
+                        RequestMarketDataThread requestMarketDataThread = new RequestMarketDataThread(getBaseService().createContract(contractEntity.getSymbol()), getContractRepository(), connection);
+                        requestMarketDataThread.start();
+                        LOGGER.debug("Initiate Market Data stream for ticker [{}] after application startup", contractEntity.getSymbol());
+                    }
+                } catch (Exception ex) {
+                    LOGGER.error("Could not initiate Market Data stream for ticker [{}]. Exception: [{}]", contractEntity.getSymbol(), ex.getMessage());
+                }
+            });
+
+        } catch (Exception ex) {
+            LOGGER.error("Could not connect with TWS app.");
         }
     }
 

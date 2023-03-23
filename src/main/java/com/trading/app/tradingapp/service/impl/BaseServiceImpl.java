@@ -143,7 +143,10 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             } else {
                 eReader = new EReader(eClientSocket, eReaderSignal);
                 eReader.start();
-                new Thread(this::processMessages).start();
+                new Thread(() -> processMessages(eClientSocket)).start();
+
+                // start market data feed
+                getContractService().startMarketDataFeed(eClientSocket);
             }
 
         } catch (Exception ex) {
@@ -157,8 +160,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     }
 
 
-    private void processMessages() {
-        while (true) {
+    private void processMessages(EClientSocket eClientSocket) {
+        while (eClientSocket.isConnected()) {
             try {
                 eReader.processMsgs();
             } catch (Exception e) {
@@ -252,7 +255,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             contract.symbol(ticker);
             contract.currency(CURRENCY);
             // ABNB does not work with SMART exchange
-            contract.exchange("ABNB".equalsIgnoreCase(ticker) ? ISLAND_EXCHANGE : EXCHANGE);
+            contract.exchange("ABNB".equalsIgnoreCase(ticker) || "META".equalsIgnoreCase(ticker) ? ISLAND_EXCHANGE : EXCHANGE);
             contract.secType(SECURITY_TYPE);
             return contract;
         }

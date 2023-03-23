@@ -26,6 +26,8 @@ public class OrderController {
 
     private static final String PIVOT_AND_VOLUME_BREAK_ORDER = "Automated Order - PIVOT_AND_VOLUME_BREAK_ORDER";
 
+    private static final String RKL_TRADE = "Automated Order - RKL_TRADE";
+
     @PostMapping("/setOrder")
     @ResponseBody
     public CreateSetOrderResponseDto createSetOrder(@RequestBody CreateSetOrderRequestDto createSetOrderRequestDto){
@@ -67,5 +69,14 @@ public class OrderController {
     public CreateSetOrderResponseDto CreatePivotAndVolumeBreakOrder(@RequestBody CreatePivotAndVolumeBreakOrderRequestDto createPivotAndVolumeBreakOrderRequestDto){
         return  orderService.createOrder(createPivotAndVolumeBreakOrderRequestDto, PIVOT_AND_VOLUME_BREAK_ORDER);
     }
+
+    @PostMapping("/rkltrade")
+    @ResponseBody
+    public CreateSetOrderResponseDto CreateRKLTradeOrder(@RequestBody RKLTradeOrderRequestDto rklTradeOrderRequestDto){
+        return  orderService.createOrder(rklTradeOrderRequestDto, RKL_TRADE);
+    }
+
+
+
 
 }

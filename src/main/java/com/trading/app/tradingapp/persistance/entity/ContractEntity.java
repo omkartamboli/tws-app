@@ -56,6 +56,8 @@ public class ContractEntity {
 
     private Integer ocaHedgeMultiplier;
 
+    private boolean useOcaHedgeOrder;
+
 
     public String getSymbol() {
         return symbol;
@@ -223,5 +225,13 @@ public class ContractEntity {
 
     public void setOcaHedgeMultiplier(Integer ocaHedgeMultiplier) {
         this.ocaHedgeMultiplier = ocaHedgeMultiplier;
+    }
+
+    public boolean isUseOcaHedgeOrder() {
+        return useOcaHedgeOrder;
+    }
+
+    public void setUseOcaHedgeOrder(boolean useOcaHedgeOrder) {
+        this.useOcaHedgeOrder = useOcaHedgeOrder;
     }
 }

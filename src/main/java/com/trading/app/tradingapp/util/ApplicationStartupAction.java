@@ -1,12 +1,10 @@
 package com.trading.app.tradingapp.util;
 
-import com.ib.client.EClientSocket;
-import com.trading.app.tradingapp.persistance.entity.ContractEntity;
 import com.trading.app.tradingapp.persistance.entity.SystemConfigEntity;
 import com.trading.app.tradingapp.persistance.repository.ContractRepository;
-import com.trading.app.tradingapp.persistance.repository.OrderRepository;
 import com.trading.app.tradingapp.persistance.repository.SystemConfigRepository;
 import com.trading.app.tradingapp.service.BaseService;
+import com.trading.app.tradingapp.service.ContractService;
 import com.trading.app.tradingapp.service.OrderService;
 import com.trading.app.tradingapp.service.SystemConfigService;
 import org.slf4j.Logger;
@@ -26,6 +24,9 @@ public class ApplicationStartupAction implements ApplicationListener<Application
 
     @Resource
     private ContractRepository contractRepository;
+
+    @Resource
+    private ContractService contractService;
 
     @Resource
     private OrderService orderService;
@@ -82,31 +83,13 @@ public class ApplicationStartupAction implements ApplicationListener<Application
         initiateSystemConfig();
 
         // delete all inactive orders
-        orderService.deleteAllInactiveOrders();
+        getOrderService().deleteAllInactiveOrders();
 
-        List<ContractEntity> contractEntityList = contractRepository.findAllByOrderBySymbolAsc();
-
-        if (contractEntityList == null || contractEntityList.isEmpty()) {
-            return;
-        }
-
-        try {
-
-            final EClientSocket connection = getBaseService().getConnection();
-
-            if (null != connection) {
-                contractEntityList.forEach(contractEntity -> {
-                    try {
-                        RequestMarketDataThread requestMarketDataThread = new RequestMarketDataThread(getBaseService().createContract(contractEntity.getSymbol()), getContractRepository(), connection);
-                        requestMarketDataThread.start();
-                        LOGGER.info("Initiate Market Data stream for ticker [{}] after application startup", contractEntity.getSymbol());
-                    } catch (Exception ex) {
-                        LOGGER.error("Could not initiate Market Data stream for ticker [{}]. Exception: [{}]", contractEntity.getSymbol(), ex.getMessage());
-                    }
-                });
-            }
-        } catch (Exception ex) {
-            LOGGER.error("Could not connect with TWS app.");
+        // Get TWS connection and start market data Feed
+        try{
+            getBaseService().getConnection();
+        }catch(Exception ex){
+            LOGGER.error("Could not connect to TWS. EX: ", ex);
         }
     }
 
@@ -188,5 +171,21 @@ public class ApplicationStartupAction implements ApplicationListener<Application
 
     public void setSystemConfigService(SystemConfigService systemConfigService) {
         this.systemConfigService = systemConfigService;
+    }
+
+    public ContractService getContractService() {
+        return contractService;
+    }
+
+    public void setContractService(ContractService contractService) {
+        this.contractService = contractService;
+    }
+
+    public OrderService getOrderService() {
+        return orderService;
+    }
+
+    public void setOrderService(OrderService orderService) {
+        this.orderService = orderService;
     }
 }

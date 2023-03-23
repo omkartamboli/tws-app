@@ -1,5 +1,6 @@
 package com.trading.app.tradingapp.service;
 
+import com.ib.client.EClientSocket;
 import com.trading.app.tradingapp.dto.SequenceTracker;
 import com.trading.app.tradingapp.dto.response.GetMarketDataResponseDto;
 
@@ -18,6 +19,8 @@ public interface ContractService {
     void startSellSequence(String ticker, Double tpMargin, Integer quantity);
 
     void stopSellSequence(String tickerSymbol);
+
+    void startMarketDataFeed(EClientSocket connection);
 
     Map<String, SequenceTracker> getTickerSequenceTrackerMap();
 

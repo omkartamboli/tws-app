@@ -6,7 +6,9 @@ import com.trading.app.tradingapp.dto.response.CreateOptionsOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.CreateOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.CreateSetOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.UpdateSetOrderResponseDto;
+import com.trading.app.tradingapp.persistance.entity.ContractEntity;
 import com.trading.app.tradingapp.persistance.entity.OrderEntity;
+import com.trading.app.tradingapp.persistance.repository.ContractRepository;
 import com.trading.app.tradingapp.persistance.repository.OrderRepository;
 import com.trading.app.tradingapp.service.BaseService;
 import com.trading.app.tradingapp.service.OrderService;
@@ -35,11 +37,18 @@ public class OrderServiceImpl implements OrderService {
 
     public static final String DEFAULT_STATUS = "DefaultStatus";
 
+    public static final String EMPTY_STRING = "";
+
+    public static final String MID_SL_FAILED_MESSAGE = "Could not place an order because midSL filter has failed.";
+
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OrderServiceImpl.class);
 
     @Resource
     private OrderRepository orderRepository;
+
+    @Resource
+    private ContractRepository contractRepository;
 
     @Resource
     private SystemConfigService systemConfigService;
@@ -53,10 +62,12 @@ public class OrderServiceImpl implements OrderService {
         try {
             EClientSocket eClientSocket = getBaseService().getConnection();
             Contract contract = getBaseService().createContract(createSetOrderRequestDto.getTicker());
+            List<ContractEntity> contractEntityList = getContractRepository().findBySymbol(createSetOrderRequestDto.getTicker());
+            boolean useOcaHedgeOrder = !CollectionUtils.isEmpty(contractEntityList) && Boolean.TRUE.equals(contractEntityList.get(0).isUseOcaHedgeOrder());
             List<Order> bracketOrders;
 
             if (null != createSetOrderRequestDto.getStopLossPrice()) {
-                if("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol())) {
+                if(useOcaHedgeOrder && ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol()))) {
                     bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 10);
                 } else {
                     bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
@@ -361,6 +372,86 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    @Override
+    public CreateSetOrderResponseDto createOrder(RKLTradeOrderRequestDto rklTradeOrderRequestDto, String orderTrigger) {
+        LOGGER.info(JsonSerializer.serialize(rklTradeOrderRequestDto));
+
+        try {
+
+            String ticker = rklTradeOrderRequestDto.getTicker();
+            if("ES1!".equalsIgnoreCase(ticker) || "MES1!".equalsIgnoreCase(ticker)){
+                ticker = "MES";
+            }
+            if("NQ1!".equalsIgnoreCase(ticker) || "MNQ1!".equalsIgnoreCase(ticker)){
+                ticker = "MNQ";
+            }
+            Contract contract = getBaseService().createContract(ticker);
+            double tradePrice = roundOff(rklTradeOrderRequestDto.getEntry(),rklTradeOrderRequestDto.getTicker());
+            double targetPrice1 = roundOff(rklTradeOrderRequestDto.getTp1(),rklTradeOrderRequestDto.getTicker());
+            double targetPrice2 = roundOff(rklTradeOrderRequestDto.getTp2(),rklTradeOrderRequestDto.getTicker());
+            double stopLossPrice = roundOff(rklTradeOrderRequestDto.getSl(),rklTradeOrderRequestDto.getTicker());
+            int quantity = rklTradeOrderRequestDto.getQty();
+
+            if(!checkIfTradeHasCrossedTheSLLimit(tradePrice, stopLossPrice, ticker)) {
+                LOGGER.error(MID_SL_FAILED_MESSAGE);
+                return getFailedCreateSetOrderResult(MID_SL_FAILED_MESSAGE);
+            }
+
+            EClientSocket eClientSocket = getBaseService().getConnection();
+
+            com.trading.app.tradingapp.dto.OrderType orderType = targetPrice1 > tradePrice ? com.trading.app.tradingapp.dto.OrderType.BUY : com.trading.app.tradingapp.dto.OrderType.SELL;
+
+            List<Order> bracketOrders = createBracketOrderWith2TPSL(getBaseService().getNextOrderId(), orderType.toString(), quantity, tradePrice, targetPrice1, targetPrice2, stopLossPrice, contract, orderTrigger, rklTradeOrderRequestDto.getInterval());
+
+            for (Order bracketOrder : bracketOrders) {
+                eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
+            }
+            return getSuccessCreateSetOrderResult(bracketOrders.stream().map(Order::orderId).collect(Collectors.toList()));
+        } catch (Exception ex) {
+            LOGGER.error("Could not place an order.", ex);
+            return getFailedCreateSetOrderResult(ex);
+        }
+    }
+
+    private boolean checkIfTradeHasCrossedTheSLLimit(double entry, double sl, String ticker){
+        if(ticker == null || EMPTY_STRING.equals(ticker)){
+            return false;
+        }
+        List<ContractEntity> contractEntityList = getContractRepository().findBySymbol(ticker.replace("1!",EMPTY_STRING));
+        if(!CollectionUtils.isEmpty(contractEntityList)){
+            ContractEntity contractEntity = contractEntityList.get(0);
+
+            Calendar oneMinuteBefore = Calendar.getInstance();
+            oneMinuteBefore.add(Calendar.MINUTE, -1);
+
+            // Check if LTP is modified recently in last 1 minute
+            if(contractEntity.getLtpTimestamp().getTime() > oneMinuteBefore.getTime().getTime()){
+                double midSL = (entry + sl)/2;
+                boolean midSLFilter = entry > sl ? contractEntity.getLtp() > midSL : contractEntity.getLtp() < midSL;
+
+                if(!midSLFilter){
+                    LOGGER.info("Could not take trade because LTP has moved beyond mid SL");
+                }
+
+                return  midSLFilter;
+            } else {
+                LOGGER.info("Could not take trade because security LTP is not updated in last 1 minute");
+                return false;
+            }
+        } else {
+            LOGGER.info("Could not take trade because security is not defined in local DB");
+            return false;
+        }
+    }
+
+    private double roundOff(double doubleVal, String ticker){
+        double roundedValue = ((double) Math.round(doubleVal * 100.0)) / 100.0;
+        if("ES1!".equalsIgnoreCase(ticker) || "MES1!".equalsIgnoreCase(ticker) || "NQ1!".equalsIgnoreCase(ticker) || "MNQ1!".equalsIgnoreCase(ticker)){
+            roundedValue = ((double) Math.round(doubleVal * 4.0)) / 4.0;
+        }
+        return roundedValue;
+    }
+
     private CreateSetOrderResponseDto getSuccessCreateSetOrderResult(List<Integer> orderIds) {
         CreateSetOrderResponseDto createSetOrderResponseDto = new CreateSetOrderResponseDto();
         createSetOrderResponseDto.setStatus(true);
@@ -398,6 +489,13 @@ public class OrderServiceImpl implements OrderService {
         CreateSetOrderResponseDto createSetOrderResponseDto = new CreateSetOrderResponseDto();
         createSetOrderResponseDto.setStatus(false);
         createSetOrderResponseDto.setError(ex.getMessage());
+        return createSetOrderResponseDto;
+    }
+
+    private CreateSetOrderResponseDto getFailedCreateSetOrderResult(String message) {
+        CreateSetOrderResponseDto createSetOrderResponseDto = new CreateSetOrderResponseDto();
+        createSetOrderResponseDto.setStatus(false);
+        createSetOrderResponseDto.setError(message);
         return createSetOrderResponseDto;
     }
 
@@ -532,8 +630,29 @@ public class OrderServiceImpl implements OrderService {
         return bracketOrder;
     }
 
-
     private List<Order> createBracketOrderWithTPSL(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice, double stopLossPrice, Contract contract, String orderTrigger, String orderTriggerInterval) {
+        return createBracketOrderWithTPSL(parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice, stopLossPrice, contract, orderTrigger, orderTriggerInterval, false, true);
+    }
+
+    private List<Order> createBracketOrderWith2TPSL(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice1, double takeProfitLimitPrice2, double stopLossPrice, Contract contract, String orderTrigger, String orderTriggerInterval) {
+
+        LOGGER.info("Creating bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], tp1=[{}], tp2=[{}], sl=[{}], interval=[{}]", orderTrigger, parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice1, takeProfitLimitPrice2, stopLossPrice, orderTriggerInterval);
+
+        List<Order> bracketOrder = new ArrayList<>();
+
+        if(quantity > 1) {
+            int secondOrderQty = (int) (Math.floor(quantity / 2));
+            int firstOrderQty = (int) quantity - secondOrderQty;
+            bracketOrder.addAll(createBracketOrderWithTPSL(parentOrderId, action, firstOrderQty, limitPrice, takeProfitLimitPrice1, stopLossPrice, contract, orderTrigger, orderTriggerInterval, false, false));
+            bracketOrder.addAll(createBracketOrderWithTPSL(parentOrderId+3, action, secondOrderQty, limitPrice, takeProfitLimitPrice2, stopLossPrice, contract, orderTrigger, orderTriggerInterval, false, false));
+        } else {
+            bracketOrder.addAll(createBracketOrderWithTPSL(parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice1, stopLossPrice, contract, orderTrigger, orderTriggerInterval));
+        }
+        return bracketOrder;
+    }
+
+
+    private List<Order> createBracketOrderWithTPSL(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice, double stopLossPrice, Contract contract, String orderTrigger, String orderTriggerInterval, boolean psudoSL, boolean orth) {
 
         LOGGER.info("Creating bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], tp=[{}], sl=[{}], interval=[{}]", orderTrigger, parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice, stopLossPrice, orderTriggerInterval);
 
@@ -549,7 +668,7 @@ public class OrderServiceImpl implements OrderService {
         parent.totalQuantity(quantity);
         parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         parent.tif(Types.TimeInForce.GTC);
-        parent.outsideRth(true);
+        parent.outsideRth(orth);
         parent.account(getTradingAccount());
         parent.transmit(false);
 
@@ -564,7 +683,7 @@ public class OrderServiceImpl implements OrderService {
         takeProfit.totalQuantity(quantity);
         takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
         takeProfit.tif(Types.TimeInForce.GTC);
-        takeProfit.outsideRth(true);
+        takeProfit.outsideRth(orth);
         takeProfit.parentId(parentOrderId);
         takeProfit.account(getTradingAccount());
         takeProfit.transmit(false);
@@ -575,18 +694,24 @@ public class OrderServiceImpl implements OrderService {
         Order stopLoss = new Order();
         stopLoss.orderId(parent.orderId() + 2);
         stopLoss.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
-        stopLoss.orderType(OrderType.STP_LMT);
+
         //Stop trigger price
         stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
-        // stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+        
+        stopLoss.orderType(OrderType.STP);
 
-        // Setting stop loss limit price as purchase price, to clear position at purchase price, When stop loss price is hit.
-        double offsetQty = OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType()) || STRADDLE_TYPE.equalsIgnoreCase(contract.getSecType()) ? quantity * 100 : quantity;
-        double commissionOffset = 10 / offsetQty;
-        stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(action.equalsIgnoreCase("BUY") ? limitPrice + commissionOffset : limitPrice - commissionOffset));
+//        stopLoss.orderType(OrderType.STP_LMT);
+//        if(psudoSL){
+//            // Setting stop loss limit price as purchase price, to clear position at purchase price, When stop loss price is hit.
+//            double offsetQty = OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType()) || STRADDLE_TYPE.equalsIgnoreCase(contract.getSecType()) ? quantity * 100 : quantity;
+//            double commissionOffset = 10 / offsetQty;
+//            stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(action.equalsIgnoreCase("BUY") ? limitPrice + commissionOffset : limitPrice - commissionOffset));
+//        } else {
+//            stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+//        }
 
         stopLoss.tif(Types.TimeInForce.GTC);
-        stopLoss.outsideRth(true);
+        stopLoss.outsideRth(orth);
         stopLoss.displaySize(0);
         stopLoss.totalQuantity(quantity);
         stopLoss.account(getTradingAccount());
@@ -940,5 +1065,12 @@ public class OrderServiceImpl implements OrderService {
         return getSystemConfigService().getString("divergence.order.type");
     }
 
+    public ContractRepository getContractRepository() {
+        return contractRepository;
+    }
+
+    public void setContractRepository(ContractRepository contractRepository) {
+        this.contractRepository = contractRepository;
+    }
 }
 
