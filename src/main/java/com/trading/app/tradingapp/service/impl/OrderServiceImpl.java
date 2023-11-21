@@ -70,17 +70,19 @@ public class OrderServiceImpl implements OrderService {
                 if(useOcaHedgeOrder && ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol()))) {
                     bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 10);
                 } else {
-                    bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
+                    bracketOrders = createBracketOrderWithTPSLWithSLCover(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
+                    //bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
                     //bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 1);
                 }
             } else if (null != createSetOrderRequestDto.getTrailingStopLossAmount()) {
                 bracketOrders = createBracketOrderWithTrailingSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTrailingStopLossAmount(), contract, orderTrigger, orderTriggerInterval);
             } else {
                 bracketOrders = createBracketOrderWithTP(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), contract, orderTrigger, orderTriggerInterval);
+                //bracketOrders =createBracketOrderAtMarketOpen(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), contract, orderTrigger, orderTriggerInterval);
             }
 
 
-            if("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol())){
+            if(useOcaHedgeOrder && ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol()))){
                 for (Order bracketOrder : bracketOrders) {
                     if(OrderType.STP.equals(bracketOrder.orderType())){
                         eClientSocket.placeOrder(bracketOrder.orderId(), getBaseService().createContract("M"+contract.symbol()), bracketOrder);
@@ -93,44 +95,6 @@ public class OrderServiceImpl implements OrderService {
                     eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
                 }
             }
-
-//            try {
-//                Thread.sleep(10000);
-//            } catch (InterruptedException ie) {
-//                // do nothing
-//            }
-//
-//            getBaseService().updateOrderStatus(bracketOrders.get(0).orderId(), "Filled",  25,  75, 0.0d, null, 0.0d);
-//
-//            try {
-//                Thread.sleep(10000);
-//            } catch (InterruptedException ie) {
-//                // do nothing
-//            }
-//
-//            getBaseService().updateOrderStatus(bracketOrders.get(0).orderId(), "Filled",  50,  50, 0.0d, null, 0.0d);
-//
-//            try {
-//                Thread.sleep(10000);
-//            } catch (InterruptedException ie) {
-//                // do nothing
-//            }
-//
-//            getBaseService().updateOrderStatus(bracketOrders.get(0).orderId(), "Filled",  100,  0, 0.0d, null, 0.0d);
-//
-////
-//            List<OrderEntity> ocaOrders = new ArrayList<>();
-//            int orderId = bracketOrders.get(0).orderId();
-//            getOrderRepository().findAll().forEach(order -> {if(order.getParentOcaOrder() !=null && orderId == order.getParentOcaOrder().getOrderId()) {
-//                ocaOrders.add(order);
-//            }});
-//
-//            LOGGER.info("Transmitting OCA orders >> "+ocaOrders.size());
-//            getBaseService().transmitOrder(bracketOrders.get(1), contract.symbol());
-//            getBaseService().transmitOrder(bracketOrders.get(2), contract.symbol());
-
-
-
 
             return getSuccessCreateSetOrderResult(bracketOrders.stream().map(Order::orderId).collect(Collectors.toList()));
         } catch (Exception ex) {
@@ -634,6 +598,10 @@ public class OrderServiceImpl implements OrderService {
         return createBracketOrderWithTPSL(parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice, stopLossPrice, contract, orderTrigger, orderTriggerInterval, false, true);
     }
 
+    private List<Order> createBracketOrderWithTPSLWithSLCover(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice, double stopLossPrice, Contract contract, String orderTrigger, String orderTriggerInterval) {
+        return createBracketOrderWithTPSLWithSLCover(parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice, stopLossPrice, contract, orderTrigger, orderTriggerInterval, false, true);
+    }
+
     private List<Order> createBracketOrderWith2TPSL(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice1, double takeProfitLimitPrice2, double stopLossPrice, Contract contract, String orderTrigger, String orderTriggerInterval) {
 
         LOGGER.info("Creating bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], tp1=[{}], tp2=[{}], sl=[{}], interval=[{}]", orderTrigger, parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice1, takeProfitLimitPrice2, stopLossPrice, orderTriggerInterval);
@@ -697,7 +665,6 @@ public class OrderServiceImpl implements OrderService {
 
         //Stop trigger price
         stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
-        
         stopLoss.orderType(OrderType.STP);
 
 //        stopLoss.orderType(OrderType.STP_LMT);
@@ -720,6 +687,145 @@ public class OrderServiceImpl implements OrderService {
 
         bracketOrder.add(stopLoss);
         persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
+
+        return bracketOrder;
+    }
+
+
+    private List<Order> createBracketOrderAtMarketOpen(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice, Contract contract, String orderTrigger, String orderTriggerInterval) {
+
+        LOGGER.info("Creating bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], tp=[{}], interval=[{}]", orderTrigger, parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice, orderTriggerInterval);
+
+        List<Order> bracketOrder = new ArrayList<>();
+
+        Order parent = new Order();
+        parent.orderId(parentOrderId);
+        parent.action(action);
+        parent.orderType(com.ib.client.OrderType.LMT);
+        parent.displaySize(0);
+        parent.totalQuantity(quantity);
+        parent.lmtPrice(roundOffDoubleForPriceDecimalFormat((2*limitPrice) - takeProfitLimitPrice));
+        parent.tif(Types.TimeInForce.GTC);
+        parent.outsideRth(true);
+        parent.account(getTradingAccount());
+        parent.transmit(true);
+
+        bracketOrder.add(parent);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false);
+
+        Order takeProfit = new Order();
+        takeProfit.orderId(parent.orderId() + 1);
+        takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+        takeProfit.orderType(com.ib.client.OrderType.LMT);
+        takeProfit.displaySize(0);
+        takeProfit.totalQuantity(quantity);
+        takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
+        takeProfit.tif(Types.TimeInForce.GTC);
+        takeProfit.outsideRth(true);
+        takeProfit.account(getTradingAccount());
+        takeProfit.transmit(true);
+
+        bracketOrder.add(takeProfit);
+        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false);
+
+        return bracketOrder;
+    }
+
+    private List<Order> createBracketOrderWithTPSLWithSLCover(int parentOrderId, String action, double quantity, double limitPrice, double takeProfitLimitPrice, double stopLossPrice, Contract contract, String orderTrigger, String orderTriggerInterval, boolean psudoSL, boolean orth) {
+
+        LOGGER.info("Creating bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], tp=[{}], sl=[{}], interval=[{}]", orderTrigger, parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice, stopLossPrice, orderTriggerInterval);
+
+
+        List<Order> bracketOrder = new ArrayList<>();
+
+        //This will be our main or "parent" order
+        Order parent = new Order();
+        parent.orderId(parentOrderId);
+        parent.action(action);
+        parent.orderType(com.ib.client.OrderType.LMT);
+        parent.displaySize(0);
+        parent.totalQuantity(quantity);
+        parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
+        parent.tif(Types.TimeInForce.GTC);
+        parent.outsideRth(orth);
+        parent.account(getTradingAccount());
+        parent.transmit(false);
+
+        bracketOrder.add(parent);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false);
+
+        Order takeProfit = new Order();
+        takeProfit.orderId(parent.orderId() + 1);
+        takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+        takeProfit.orderType(com.ib.client.OrderType.LMT);
+        takeProfit.displaySize(0);
+        takeProfit.totalQuantity(quantity);
+        takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
+        takeProfit.tif(Types.TimeInForce.GTC);
+        takeProfit.outsideRth(orth);
+        takeProfit.parentId(parentOrderId);
+        takeProfit.account(getTradingAccount());
+        takeProfit.transmit(false);
+
+        bracketOrder.add(takeProfit);
+        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false);
+
+        Order stopLoss = new Order();
+        stopLoss.orderId(parent.orderId() + 2);
+        stopLoss.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+
+        //Stop trigger price
+        stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+        stopLoss.orderType(OrderType.STP);
+
+        stopLoss.tif(Types.TimeInForce.GTC);
+        stopLoss.outsideRth(orth);
+        stopLoss.displaySize(0);
+        stopLoss.totalQuantity(quantity);
+        stopLoss.account(getTradingAccount());
+        stopLoss.parentId(parentOrderId);
+        stopLoss.transmit(true);
+
+        bracketOrder.add(stopLoss);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
+
+
+//        Order slTakeProfit = new Order();
+//        slTakeProfit.orderId(parent.orderId() + 3);
+//        slTakeProfit.action(action);
+//        slTakeProfit.orderType(com.ib.client.OrderType.LMT);
+//        slTakeProfit.displaySize(0);
+//        slTakeProfit.totalQuantity(quantity);
+//        slTakeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat((2*stopLossPrice)-limitPrice));
+//        slTakeProfit.tif(Types.TimeInForce.GTC);
+//        slTakeProfit.outsideRth(orth);
+//        slTakeProfit.parentId(stopLoss.orderId());
+//        slTakeProfit.account(getTradingAccount());
+//        slTakeProfit.transmit(false);
+//
+//
+//        bracketOrder.add(slTakeProfit);
+//        persistOrder(slTakeProfit, contract, orderTrigger, orderTriggerInterval, true);
+//
+//
+//        Order slStopLoss = new Order();
+//        slStopLoss.orderId(parent.orderId() + 4);
+//        slStopLoss.action(action);
+//
+//        //Stop trigger price
+//        slStopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
+//        slStopLoss.orderType(OrderType.STP);
+//
+//        slStopLoss.tif(Types.TimeInForce.GTC);
+//        slStopLoss.outsideRth(orth);
+//        slStopLoss.displaySize(0);
+//        slStopLoss.totalQuantity(quantity );
+//        slStopLoss.account(getTradingAccount());
+//        slStopLoss.parentId(stopLoss.orderId());
+//        slStopLoss.transmit(true);
+//
+//        bracketOrder.add(slStopLoss);
+//        persistOrder(slStopLoss, contract, orderTrigger, orderTriggerInterval, true);
 
         return bracketOrder;
     }
@@ -851,10 +957,6 @@ public class OrderServiceImpl implements OrderService {
         updateOrder.orderType(orderType);
         updateOrder.displaySize(0);
         updateOrder.totalQuantity(quantity);
-
-        if (parentOrderId != null) {
-            updateOrder.parentId(parentOrderId);
-        }
 
         if (OrderType.STP_LMT.getApiString().equalsIgnoreCase(orderType)) {
             updateOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(triggerPrice));

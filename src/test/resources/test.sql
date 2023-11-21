@@ -26,11 +26,13 @@ SELECT * FROM tradingApp.system_config_entity;
 -- delete from tradingApp.order_entity where order_status='Submitted';
 
 
+/*
 -- DELETE all ORDERs
--- delete from tradingApp.order_entity where parent_order_order_id > 0 ;
--- delete from tradingApp.order_entity where parent_oca_order_order_id > 0 ;
--- delete from tradingApp.order_entity;
+delete from tradingApp.order_entity where parent_order_order_id > 0 ;
+delete from tradingApp.order_entity where parent_oca_order_order_id > 0 ;
+delete from tradingApp.order_entity;
 
+*/
 -- update  tradingApp.contract_entity set default_stop_loss=10 where  default_stop_loss is null;
 
 -- update  tradingApp.contract_entity set oca_Hedge_Multiplier=1;
