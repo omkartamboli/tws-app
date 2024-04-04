@@ -62,6 +62,16 @@ public class DashboardController {
         return "dashboard";
     }
 
+    @GetMapping("/refreshingDashboard")
+    public String getRefreshingDashboardTab(Model model, HttpSession httpSession) {
+        // Add Ticker and Orders data
+        Map<CreateSetOrderFormDto, TickerFormsGroup> tickerFormsGroupMap = getDashboardService().getTickerOrderModelMap();
+        model.addAttribute("tickerFormsGroupMap", tickerFormsGroupMap);
+        model.addAttribute("tickerFormsList", tickerFormsGroupMap.keySet());
+        model.addAttribute("activeSymbol", getLastAccessedSymbol(httpSession));
+        return "refreshingDashboard";
+    }
+
     @PostMapping("/dashboard/createSetOrder")
     public RedirectView createSetOrder(@ModelAttribute CreateSetOrderRequestDto createSetOrderRequestDto, Model model) {
 
@@ -304,7 +314,11 @@ public class DashboardController {
 
         createSetOrderRequestDto.setQuantity(createSetOrderFormDto.getQuantity());
         createSetOrderRequestDto.setTicker(createSetOrderFormDto.getTicker());
-        createSetOrderRequestDto.setTransactionPrice(createSetOrderFormDto.getTransactionPrice());
+        if(null != createSetOrderFormDto.getTransactionPrice() ){
+            createSetOrderRequestDto.setTransactionPrice(createSetOrderFormDto.getTransactionPrice());
+        } else {
+            createSetOrderRequestDto.setTransactionPrice(createSetOrderFormDto.getLtp());
+        }
         createSetOrderRequestDto.setOrderType(orderType);
 
         if (OrderType.BUY.equals(orderType)) {
@@ -332,7 +346,11 @@ public class DashboardController {
 
         createSetOrderRequestDto.setQuantity(createSetOrderFormDto.getQuantity());
         createSetOrderRequestDto.setTicker(createSetOrderFormDto.getTicker());
-        createSetOrderRequestDto.setTransactionPrice(createSetOrderFormDto.getTransactionPrice());
+        if(null != createSetOrderFormDto.getTransactionPrice() ){
+            createSetOrderRequestDto.setTransactionPrice(createSetOrderFormDto.getTransactionPrice());
+        } else {
+            createSetOrderRequestDto.setTransactionPrice(createSetOrderFormDto.getLtp());
+        }
         createSetOrderRequestDto.setOrderType(orderType);
         createSetOrderRequestDto.setTrailingStopLossAmount(createSetOrderFormDto.getTrailingStopLoss());
 

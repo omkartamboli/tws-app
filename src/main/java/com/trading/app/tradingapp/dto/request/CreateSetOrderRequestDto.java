@@ -1,5 +1,6 @@
 package com.trading.app.tradingapp.dto.request;
 
+import com.ib.client.Order;
 import com.trading.app.tradingapp.dto.OrderType;
 import com.trading.app.tradingapp.dto.TradingType;
 
@@ -52,7 +53,12 @@ public class CreateSetOrderRequestDto {
     public void setOrderType(OrderType orderType) {
         this.orderType = orderType;
     }
-
+    public void setOrderType(String orderType) {
+        if(OrderType.BUY.toString().equalsIgnoreCase(orderType))
+            this.orderType = OrderType.BUY;
+        if(OrderType.SELL.toString().equalsIgnoreCase(orderType))
+            this.orderType = OrderType.SELL;
+    }
     public Integer getQuantity() {
         return quantity;
     }

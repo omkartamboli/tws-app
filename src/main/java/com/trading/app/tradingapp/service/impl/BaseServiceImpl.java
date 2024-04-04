@@ -263,7 +263,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public Contract createFuturesContract(String ticker, String lastTradeDateOrContractMonth) {
-        Contract contract =  new FutContract(ticker,lastTradeDateOrContractMonth);
+        Contract contract =  new FutContract(ticker,"202406");
         contract.exchange("CME");
         return contract;
     }
@@ -449,7 +449,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         transmitOrder.orderId(orderEntity.getOrderId());
         transmitOrder.action(orderEntity.getOrderAction());
         transmitOrder.orderType(orderEntity.getOrderType());
-        transmitOrder.displaySize(0);
+        transmitOrder.hidden(true);
         transmitOrder.totalQuantity(filledQty * (orderEntity.getOcaHedgeMultiplier() == null ? 1 : orderEntity.getOcaHedgeMultiplier()));
         if("STP".equalsIgnoreCase(orderEntity.getOrderType())){
             transmitOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(orderEntity.getStopLossTriggerPrice()));
@@ -624,9 +624,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     @Override
     public void orderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, int permId, int parentId, double lastFillPrice, int clientId, String whyHeld, double mktCapPrice) {
         //LOGGER.info("Got order status for order: [{}]", orderId);
-        LOGGER.info("Data: status:[{}], filled:[{}], remaining:[{}], avgFillPrice:[{}], parent order id:[{}], clientId:[{}], mktCapPrice:[{}], whyHeld:[{}]", status, filled, remaining, avgFillPrice, parentId, clientId, mktCapPrice, whyHeld);
+        //LOGGER.info("Data: status:[{}], filled:[{}], remaining:[{}], avgFillPrice:[{}], parent order id:[{}], clientId:[{}], mktCapPrice:[{}], whyHeld:[{}]", status, filled, remaining, avgFillPrice, parentId, clientId, mktCapPrice, whyHeld);
         updateOrderStatus(orderId, status, filled, remaining, avgFillPrice, whyHeld, mktCapPrice);
-        LOGGER.info("Order status is updated in the database for order: [{}]", orderId);
+        //LOGGER.info("Order status is updated in the database for order: [{}]", orderId);
 
         // If order is Filled
         if (FILLED_STATUS.equalsIgnoreCase(status)) {

@@ -13,6 +13,8 @@ public interface OrderRepository extends CrudRepository<OrderEntity, Integer> {
 
     List<OrderEntity> findByOrderId(Integer orderId);
 
+    List<OrderEntity> findBySequenceId(String sequenceId);
+
     @Query("select order from OrderEntity order where order.parentOcaOrder = :order" )
     List<OrderEntity> findByParentOcaOrder(@Param("order") OrderEntity order);
 

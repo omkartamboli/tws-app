@@ -6,6 +6,8 @@ public class CreateSetOrderFormDto {
 
     private Double transactionPrice;
 
+    private Double ltp;
+
     private Double stopLoss;
 
     private Double trailingStopLoss;
@@ -170,5 +172,13 @@ public class CreateSetOrderFormDto {
 
     public void setTrailingStopLoss(Double trailingStopLoss) {
         this.trailingStopLoss = trailingStopLoss;
+    }
+
+    public Double getLtp() {
+        return ltp;
+    }
+
+    public void setLtp(Double ltp) {
+        this.ltp = ltp;
     }
 }

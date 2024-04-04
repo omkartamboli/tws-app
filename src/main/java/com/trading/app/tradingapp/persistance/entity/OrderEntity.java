@@ -14,6 +14,12 @@ public class OrderEntity {
     @Column(nullable = false)
     private Integer orderId;
 
+    @Column(nullable = true)
+    private String sequenceId;
+
+    @Column(nullable = true)
+    private String otsOrderType;
+
     @Column(nullable = false)
     private String orderType; // LMT, MKT etc.
 
@@ -348,5 +354,21 @@ public class OrderEntity {
 
     public void setOcaHedgeMultiplier(Integer ocaHedgeMultiplier) {
         this.ocaHedgeMultiplier = ocaHedgeMultiplier;
+    }
+
+    public String getSequenceId() {
+        return sequenceId;
+    }
+
+    public void setSequenceId(String sequenceId) {
+        this.sequenceId = sequenceId;
+    }
+
+    public String getOtsOrderType() {
+        return otsOrderType;
+    }
+
+    public void setOtsOrderType(String otsOrderType) {
+        this.otsOrderType = otsOrderType;
     }
 }

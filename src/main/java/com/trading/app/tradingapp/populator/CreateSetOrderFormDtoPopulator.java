@@ -16,7 +16,7 @@ public class CreateSetOrderFormDtoPopulator {
 
             createSetOrderFormDto.setTicker(contractEntity.getSymbol());
             createSetOrderFormDto.setQuantity(contractEntity.getDefaultQuantity());
-            createSetOrderFormDto.setTransactionPrice(contractEntity.getLtp());
+            createSetOrderFormDto.setLtp(contractEntity.getLtp());
 
             if(contractEntity.getDefaultStopLoss() !=null) {
                 createSetOrderFormDto.setStopLoss(contractEntity.getDefaultStopLoss());

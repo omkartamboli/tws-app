@@ -26,35 +26,27 @@ import java.util.stream.Collectors;
 @Service
 public class OrderServiceImpl implements OrderService {
 
+    public static final String OPTIONS_TYPE = "OPT";
+    public static final String STRADDLE_TYPE = "BAG";
+    public static final String DEFAULT_STATUS = "DefaultStatus";
+    public static final String EMPTY_STRING = "";
+    public static final String MID_SL_FAILED_MESSAGE = "Could not place an order because midSL filter has failed.";
+    public static final String ORDER_TYPE_INVALID_MESSAGE = "Could not place an order because invalid order type is sent";
+    public static final String PRIMARY_ORDER_DOES_NOT_EXIST_MESSAGE = "Could not find a primary order for an exit order, so skipping exit order creation";
+    public static final String PRIMARY_ORDER_NOT_FILLED_MESSAGE = "Primary order is not filled for a given exit order, so skipping exit order creation. Also deleting primary order = \"[{}]\"";
+    public static final String EXIT_ORDER_QUANTITY_CHANGED_TO_MATCH_PRIMARY_ORDER_MESSAGE = "Exit order quantity is changed to match the filled quantity on the primary order. Primary order=[{}], exit qty=[{}], changed qty=[{}]";
+    private static final String SECURITY_TYPE = "STK";
+    private static final Logger LOGGER = LoggerFactory.getLogger(OrderServiceImpl.class);
+    private static final double DEFAULT_ORDER_VALUE = 10000.00d;
+    private static final String DEFAULT_TRADING_ACCOUNT_NUMBER = "DU3702853";
     @Resource
     private BaseService baseService;
-
-    private static final String SECURITY_TYPE = "STK";
-
-    public static final String OPTIONS_TYPE = "OPT";
-
-    public static final String STRADDLE_TYPE = "BAG";
-
-    public static final String DEFAULT_STATUS = "DefaultStatus";
-
-    public static final String EMPTY_STRING = "";
-
-    public static final String MID_SL_FAILED_MESSAGE = "Could not place an order because midSL filter has failed.";
-
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(OrderServiceImpl.class);
-
     @Resource
     private OrderRepository orderRepository;
-
     @Resource
     private ContractRepository contractRepository;
-
     @Resource
     private SystemConfigService systemConfigService;
-
-    private static final double DEFAULT_ORDER_VALUE = 10000.00d;
-
 
     @Override
     public CreateSetOrderResponseDto createOrder(CreateSetOrderRequestDto createSetOrderRequestDto, String orderTrigger, String orderTriggerInterval) {
@@ -67,7 +59,7 @@ public class OrderServiceImpl implements OrderService {
             List<Order> bracketOrders;
 
             if (null != createSetOrderRequestDto.getStopLossPrice()) {
-                if(useOcaHedgeOrder && ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol()))) {
+                if (useOcaHedgeOrder && ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol()))) {
                     bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 10);
                 } else {
                     bracketOrders = createBracketOrderWithTPSLWithSLCover(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
@@ -82,10 +74,10 @@ public class OrderServiceImpl implements OrderService {
             }
 
 
-            if(useOcaHedgeOrder && ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol()))){
+            if (useOcaHedgeOrder && ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol()))) {
                 for (Order bracketOrder : bracketOrders) {
-                    if(OrderType.STP.equals(bracketOrder.orderType())){
-                        eClientSocket.placeOrder(bracketOrder.orderId(), getBaseService().createContract("M"+contract.symbol()), bracketOrder);
+                    if (OrderType.STP.equals(bracketOrder.orderType())) {
+                        eClientSocket.placeOrder(bracketOrder.orderId(), getBaseService().createContract("M" + contract.symbol()), bracketOrder);
                     } else {
                         eClientSocket.placeOrder(bracketOrder.orderId(), contract, bracketOrder);
                     }
@@ -198,6 +190,15 @@ public class OrderServiceImpl implements OrderService {
         } catch (Exception ex) {
             LOGGER.error("Could not place a cancel order.", ex);
             return getFailedUpdateSetOrderResult(updateSetOrderRequestDto.getOrderId(), ex.getMessage());
+        }
+    }
+
+    private void cancelOrder(int orderId) {
+        try {
+            LOGGER.info("Cancelling order with OrderId=[{}], as the filled qty is less than the original qty", orderId);
+            getBaseService().getConnection().cancelOrder(orderId);
+        } catch (Exception ex) {
+            LOGGER.error("Could not place a cancel order.", ex);
         }
     }
 
@@ -343,20 +344,20 @@ public class OrderServiceImpl implements OrderService {
         try {
 
             String ticker = rklTradeOrderRequestDto.getTicker();
-            if("ES1!".equalsIgnoreCase(ticker) || "MES1!".equalsIgnoreCase(ticker)){
+            if ("ES1!".equalsIgnoreCase(ticker) || "MES1!".equalsIgnoreCase(ticker)) {
                 ticker = "MES";
             }
-            if("NQ1!".equalsIgnoreCase(ticker) || "MNQ1!".equalsIgnoreCase(ticker)){
+            if ("NQ1!".equalsIgnoreCase(ticker) || "MNQ1!".equalsIgnoreCase(ticker)) {
                 ticker = "MNQ";
             }
             Contract contract = getBaseService().createContract(ticker);
-            double tradePrice = roundOff(rklTradeOrderRequestDto.getEntry(),rklTradeOrderRequestDto.getTicker());
-            double targetPrice1 = roundOff(rklTradeOrderRequestDto.getTp1(),rklTradeOrderRequestDto.getTicker());
-            double targetPrice2 = roundOff(rklTradeOrderRequestDto.getTp2(),rklTradeOrderRequestDto.getTicker());
-            double stopLossPrice = roundOff(rklTradeOrderRequestDto.getSl(),rklTradeOrderRequestDto.getTicker());
+            double tradePrice = roundOff(rklTradeOrderRequestDto.getEntry(), rklTradeOrderRequestDto.getTicker());
+            double targetPrice1 = roundOff(rklTradeOrderRequestDto.getTp1(), rklTradeOrderRequestDto.getTicker());
+            double targetPrice2 = roundOff(rklTradeOrderRequestDto.getTp2(), rklTradeOrderRequestDto.getTicker());
+            double stopLossPrice = roundOff(rklTradeOrderRequestDto.getSl(), rklTradeOrderRequestDto.getTicker());
             int quantity = rklTradeOrderRequestDto.getQty();
 
-            if(!checkIfTradeHasCrossedTheSLLimit(tradePrice, stopLossPrice, ticker)) {
+            if (!checkIfTradeHasCrossedTheSLLimit(tradePrice, stopLossPrice, ticker)) {
                 LOGGER.error(MID_SL_FAILED_MESSAGE);
                 return getFailedCreateSetOrderResult(MID_SL_FAILED_MESSAGE);
             }
@@ -377,27 +378,90 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private boolean checkIfTradeHasCrossedTheSLLimit(double entry, double sl, String ticker){
-        if(ticker == null || EMPTY_STRING.equals(ticker)){
+    @Override
+    public CreateSetOrderResponseDto createOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger) {
+        // LOGGER.info(JsonSerializer.serialize(otStarTradeOrderRequestDto));
+        Date start = new Date();
+
+        if (!"BUY".equalsIgnoreCase(otStarTradeOrderRequestDto.getOrderType()) && !"SELL".equalsIgnoreCase(otStarTradeOrderRequestDto.getOrderType())) {
+            LOGGER.error(ORDER_TYPE_INVALID_MESSAGE);
+            return getFailedCreateSetOrderResult(ORDER_TYPE_INVALID_MESSAGE);
+        }
+
+        if ("LX".equals(otStarTradeOrderRequestDto.getOtsOrderType()) || "SX".equals(otStarTradeOrderRequestDto.getOtsOrderType())) {
+            List<OrderEntity> orderEntityList = getOrderRepository().findBySequenceId(otStarTradeOrderRequestDto.getSequenceId());
+            if (CollectionUtils.isEmpty(orderEntityList)) {
+                LOGGER.error(PRIMARY_ORDER_DOES_NOT_EXIST_MESSAGE + "\n" + JsonSerializer.serialize(otStarTradeOrderRequestDto));
+                return getFailedCreateSetOrderResult(PRIMARY_ORDER_DOES_NOT_EXIST_MESSAGE);
+            } else {
+                OrderEntity primaryOrder = orderEntityList.get(0);
+                if(null == primaryOrder.getFilled() || primaryOrder.getFilled() == 0.0d){
+                    LOGGER.error(PRIMARY_ORDER_NOT_FILLED_MESSAGE + "\n" + JsonSerializer.serialize(otStarTradeOrderRequestDto), primaryOrder.getOrderId());
+                    cancelOrder(primaryOrder.getOrderId());
+                    return getFailedCreateSetOrderResult(PRIMARY_ORDER_NOT_FILLED_MESSAGE.replace("[{}]", primaryOrder.getOrderId().toString()));
+                } else if(primaryOrder.getFilled().intValue() != otStarTradeOrderRequestDto.getQuantity()){
+                    cancelOrder(primaryOrder.getOrderId());
+                    otStarTradeOrderRequestDto.setQuantity(primaryOrder.getFilled().intValue());
+                    LOGGER.info(EXIT_ORDER_QUANTITY_CHANGED_TO_MATCH_PRIMARY_ORDER_MESSAGE, primaryOrder.getOrderId(), otStarTradeOrderRequestDto.getQuantity(), primaryOrder.getFilled());
+                }
+            }
+        }
+
+        try {
+            boolean enableOrth = !otStarTradeOrderRequestDto.getTicker().contains("1!");
+            String ticker = otStarTradeOrderRequestDto.getTicker().replace("1!", "");
+            Contract contract = getBaseService().createContract(ticker);
+            double tradePrice = roundOff(otStarTradeOrderRequestDto.getEntry(), otStarTradeOrderRequestDto.getTicker());
+            int quantity = otStarTradeOrderRequestDto.getQuantity();
+
+            EClientSocket eClientSocket = getBaseService().getConnection();
+
+            Order order = createSingleOrder(getNextOrderIdForOtStarTrade(), otStarTradeOrderRequestDto.getOrderType(), quantity, tradePrice, contract, orderTrigger, otStarTradeOrderRequestDto.getInterval(), enableOrth);
+
+            eClientSocket.placeOrder(order.orderId(), contract, order);
+
+            Date end = new Date();
+
+            // persisting the order after order is sent to TWS, to avoid delay in sending orders to exchange
+            persistOrder(order, contract, orderTrigger, otStarTradeOrderRequestDto.getInterval(), true, otStarTradeOrderRequestDto.getSequenceId(), otStarTradeOrderRequestDto.getOtsOrderType());
+
+            LOGGER.info("OTS-Create Order API execution time is [{}] ms", end.getTime() - start.getTime());
+
+            return getSuccessCreateSetOrderResult(List.of(order.orderId()));
+        } catch (Exception ex) {
+            LOGGER.error("Could not place a OT-Star order.", ex);
+            return getFailedCreateSetOrderResult(ex);
+        }
+    }
+
+    private synchronized int getNextOrderIdForOtStarTrade() throws Exception {
+        synchronized (this) {
+            return getBaseService().getNextOrderId();
+        }
+    }
+
+
+    private boolean checkIfTradeHasCrossedTheSLLimit(double entry, double sl, String ticker) {
+        if (ticker == null || EMPTY_STRING.equals(ticker)) {
             return false;
         }
-        List<ContractEntity> contractEntityList = getContractRepository().findBySymbol(ticker.replace("1!",EMPTY_STRING));
-        if(!CollectionUtils.isEmpty(contractEntityList)){
+        List<ContractEntity> contractEntityList = getContractRepository().findBySymbol(ticker.replace("1!", EMPTY_STRING));
+        if (!CollectionUtils.isEmpty(contractEntityList)) {
             ContractEntity contractEntity = contractEntityList.get(0);
 
             Calendar oneMinuteBefore = Calendar.getInstance();
             oneMinuteBefore.add(Calendar.MINUTE, -1);
 
             // Check if LTP is modified recently in last 1 minute
-            if(contractEntity.getLtpTimestamp().getTime() > oneMinuteBefore.getTime().getTime()){
-                double midSL = (entry + sl)/2;
+            if (contractEntity.getLtpTimestamp().getTime() > oneMinuteBefore.getTime().getTime()) {
+                double midSL = (entry + sl) / 2;
                 boolean midSLFilter = entry > sl ? contractEntity.getLtp() > midSL : contractEntity.getLtp() < midSL;
 
-                if(!midSLFilter){
+                if (!midSLFilter) {
                     LOGGER.info("Could not take trade because LTP has moved beyond mid SL");
                 }
 
-                return  midSLFilter;
+                return midSLFilter;
             } else {
                 LOGGER.info("Could not take trade because security LTP is not updated in last 1 minute");
                 return false;
@@ -408,9 +472,9 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private double roundOff(double doubleVal, String ticker){
+    private double roundOff(double doubleVal, String ticker) {
         double roundedValue = ((double) Math.round(doubleVal * 100.0)) / 100.0;
-        if("ES1!".equalsIgnoreCase(ticker) || "MES1!".equalsIgnoreCase(ticker) || "NQ1!".equalsIgnoreCase(ticker) || "MNQ1!".equalsIgnoreCase(ticker)){
+        if ("ES1!".equalsIgnoreCase(ticker) || "MES1!".equalsIgnoreCase(ticker) || "NQ1!".equalsIgnoreCase(ticker) || "MNQ1!".equalsIgnoreCase(ticker)) {
             roundedValue = ((double) Math.round(doubleVal * 4.0)) / 4.0;
         }
         return roundedValue;
@@ -503,7 +567,7 @@ public class OrderServiceImpl implements OrderService {
         parent.orderId(parentOrderId);
         parent.action(action);
         parent.orderType(com.ib.client.OrderType.LMT);
-        parent.displaySize(0);
+        parent.hidden(true);
         parent.totalQuantity(quantity);
         parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         parent.tif(Types.TimeInForce.GTC);
@@ -512,7 +576,7 @@ public class OrderServiceImpl implements OrderService {
         parent.transmit(false);
 
         bracketOrder.add(parent);
-        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false, null, null);
 
         Order stopLoss = new Order();
         stopLoss.orderId(parent.orderId() + 1);
@@ -525,14 +589,14 @@ public class OrderServiceImpl implements OrderService {
 
         stopLoss.tif(Types.TimeInForce.GTC);
         stopLoss.outsideRth(true);
-        stopLoss.displaySize(0);
+        stopLoss.hidden(true);
         stopLoss.totalQuantity(quantity);
         stopLoss.account(getTradingAccount());
         stopLoss.parentId(parentOrderId);
         stopLoss.transmit(true);
 
         bracketOrder.add(stopLoss);
-        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true, null, null);
 
         return bracketOrder;
     }
@@ -554,13 +618,13 @@ public class OrderServiceImpl implements OrderService {
 
         stopLoss.tif(Types.TimeInForce.GTC);
         stopLoss.outsideRth(true);
-        stopLoss.displaySize(0);
+        stopLoss.hidden(true);
         stopLoss.totalQuantity(quantity);
         stopLoss.account(getTradingAccount());
         stopLoss.transmit(true);
 
         bracketOrder.add(stopLoss);
-        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true, null, null);
 
         return bracketOrder;
     }
@@ -583,13 +647,13 @@ public class OrderServiceImpl implements OrderService {
 
         stopLoss.tif(Types.TimeInForce.GTC);
         stopLoss.outsideRth(true);
-        stopLoss.displaySize(0);
+        stopLoss.hidden(true);
         stopLoss.totalQuantity(quantity);
         stopLoss.account(getTradingAccount());
         stopLoss.transmit(true);
 
         bracketOrder.add(stopLoss);
-        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true, null, null);
 
         return bracketOrder;
     }
@@ -608,11 +672,11 @@ public class OrderServiceImpl implements OrderService {
 
         List<Order> bracketOrder = new ArrayList<>();
 
-        if(quantity > 1) {
+        if (quantity > 1) {
             int secondOrderQty = (int) (Math.floor(quantity / 2));
             int firstOrderQty = (int) quantity - secondOrderQty;
             bracketOrder.addAll(createBracketOrderWithTPSL(parentOrderId, action, firstOrderQty, limitPrice, takeProfitLimitPrice1, stopLossPrice, contract, orderTrigger, orderTriggerInterval, false, false));
-            bracketOrder.addAll(createBracketOrderWithTPSL(parentOrderId+3, action, secondOrderQty, limitPrice, takeProfitLimitPrice2, stopLossPrice, contract, orderTrigger, orderTriggerInterval, false, false));
+            bracketOrder.addAll(createBracketOrderWithTPSL(parentOrderId + 3, action, secondOrderQty, limitPrice, takeProfitLimitPrice2, stopLossPrice, contract, orderTrigger, orderTriggerInterval, false, false));
         } else {
             bracketOrder.addAll(createBracketOrderWithTPSL(parentOrderId, action, quantity, limitPrice, takeProfitLimitPrice1, stopLossPrice, contract, orderTrigger, orderTriggerInterval));
         }
@@ -632,7 +696,7 @@ public class OrderServiceImpl implements OrderService {
         parent.orderId(parentOrderId);
         parent.action(action);
         parent.orderType(com.ib.client.OrderType.LMT);
-        parent.displaySize(0);
+        parent.hidden(true);
         parent.totalQuantity(quantity);
         parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         parent.tif(Types.TimeInForce.GTC);
@@ -641,13 +705,13 @@ public class OrderServiceImpl implements OrderService {
         parent.transmit(false);
 
         bracketOrder.add(parent);
-        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false, null, null);
 
         Order takeProfit = new Order();
         takeProfit.orderId(parent.orderId() + 1);
         takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
         takeProfit.orderType(com.ib.client.OrderType.LMT);
-        takeProfit.displaySize(0);
+        takeProfit.hidden(true);
         takeProfit.totalQuantity(quantity);
         takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
         takeProfit.tif(Types.TimeInForce.GTC);
@@ -657,7 +721,7 @@ public class OrderServiceImpl implements OrderService {
         takeProfit.transmit(false);
 
         bracketOrder.add(takeProfit);
-        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false);
+        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false, null, null);
 
         Order stopLoss = new Order();
         stopLoss.orderId(parent.orderId() + 2);
@@ -679,14 +743,14 @@ public class OrderServiceImpl implements OrderService {
 
         stopLoss.tif(Types.TimeInForce.GTC);
         stopLoss.outsideRth(orth);
-        stopLoss.displaySize(0);
+        stopLoss.hidden(true);
         stopLoss.totalQuantity(quantity);
         stopLoss.account(getTradingAccount());
         stopLoss.parentId(parentOrderId);
         stopLoss.transmit(true);
 
         bracketOrder.add(stopLoss);
-        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true, null, null);
 
         return bracketOrder;
     }
@@ -702,22 +766,22 @@ public class OrderServiceImpl implements OrderService {
         parent.orderId(parentOrderId);
         parent.action(action);
         parent.orderType(com.ib.client.OrderType.LMT);
-        parent.displaySize(0);
+        parent.hidden(true);
         parent.totalQuantity(quantity);
-        parent.lmtPrice(roundOffDoubleForPriceDecimalFormat((2*limitPrice) - takeProfitLimitPrice));
+        parent.lmtPrice(roundOffDoubleForPriceDecimalFormat((2 * limitPrice) - takeProfitLimitPrice));
         parent.tif(Types.TimeInForce.GTC);
         parent.outsideRth(true);
         parent.account(getTradingAccount());
         parent.transmit(true);
 
         bracketOrder.add(parent);
-        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false, null, null);
 
         Order takeProfit = new Order();
         takeProfit.orderId(parent.orderId() + 1);
         takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
         takeProfit.orderType(com.ib.client.OrderType.LMT);
-        takeProfit.displaySize(0);
+        takeProfit.hidden(true);
         takeProfit.totalQuantity(quantity);
         takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
         takeProfit.tif(Types.TimeInForce.GTC);
@@ -726,7 +790,7 @@ public class OrderServiceImpl implements OrderService {
         takeProfit.transmit(true);
 
         bracketOrder.add(takeProfit);
-        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false);
+        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false, null, null);
 
         return bracketOrder;
     }
@@ -743,7 +807,7 @@ public class OrderServiceImpl implements OrderService {
         parent.orderId(parentOrderId);
         parent.action(action);
         parent.orderType(com.ib.client.OrderType.LMT);
-        parent.displaySize(0);
+        parent.hidden(true);
         parent.totalQuantity(quantity);
         parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         parent.tif(Types.TimeInForce.GTC);
@@ -752,13 +816,13 @@ public class OrderServiceImpl implements OrderService {
         parent.transmit(false);
 
         bracketOrder.add(parent);
-        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false, null, null);
 
         Order takeProfit = new Order();
         takeProfit.orderId(parent.orderId() + 1);
         takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
         takeProfit.orderType(com.ib.client.OrderType.LMT);
-        takeProfit.displaySize(0);
+        takeProfit.hidden(true);
         takeProfit.totalQuantity(quantity);
         takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
         takeProfit.tif(Types.TimeInForce.GTC);
@@ -768,7 +832,7 @@ public class OrderServiceImpl implements OrderService {
         takeProfit.transmit(false);
 
         bracketOrder.add(takeProfit);
-        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false);
+        persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false, null, null);
 
         Order stopLoss = new Order();
         stopLoss.orderId(parent.orderId() + 2);
@@ -780,21 +844,21 @@ public class OrderServiceImpl implements OrderService {
 
         stopLoss.tif(Types.TimeInForce.GTC);
         stopLoss.outsideRth(orth);
-        stopLoss.displaySize(0);
+        stopLoss.hidden(true);
         stopLoss.totalQuantity(quantity);
         stopLoss.account(getTradingAccount());
         stopLoss.parentId(parentOrderId);
         stopLoss.transmit(true);
 
         bracketOrder.add(stopLoss);
-        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true);
+        persistOrder(stopLoss, contract, orderTrigger, orderTriggerInterval, true, null, null);
 
 
 //        Order slTakeProfit = new Order();
 //        slTakeProfit.orderId(parent.orderId() + 3);
 //        slTakeProfit.action(action);
 //        slTakeProfit.orderType(com.ib.client.OrderType.LMT);
-//        slTakeProfit.displaySize(0);
+//        slTakeProfit.hidden(true);
 //        slTakeProfit.totalQuantity(quantity);
 //        slTakeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat((2*stopLossPrice)-limitPrice));
 //        slTakeProfit.tif(Types.TimeInForce.GTC);
@@ -818,7 +882,7 @@ public class OrderServiceImpl implements OrderService {
 //
 //        slStopLoss.tif(Types.TimeInForce.GTC);
 //        slStopLoss.outsideRth(orth);
-//        slStopLoss.displaySize(0);
+//        slStopLoss.hidden(true);
 //        slStopLoss.totalQuantity(quantity );
 //        slStopLoss.account(getTradingAccount());
 //        slStopLoss.parentId(stopLoss.orderId());
@@ -843,7 +907,7 @@ public class OrderServiceImpl implements OrderService {
         parent.orderId(parentOrderId);
         parent.action(action);
         parent.orderType(OrderType.LMT);
-        parent.displaySize(0);
+        parent.hidden(true);
         parent.totalQuantity(quantity);
         parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         parent.tif(Types.TimeInForce.GTC);
@@ -853,14 +917,14 @@ public class OrderServiceImpl implements OrderService {
 
         bracketOrder.add(parent);
 
-        OrderEntity parentOrderEntity = persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false,null, null, null);
+        OrderEntity parentOrderEntity = persistOrder(parent, contract, orderTrigger, orderTriggerInterval, false, null, null, null, null, null);
 
 
         Order takeProfit = new Order();
         takeProfit.orderId(parent.orderId() + 1);
         takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
         takeProfit.orderType(OrderType.LMT);
-        takeProfit.displaySize(0);
+        takeProfit.hidden(true);
         takeProfit.totalQuantity(quantity);
         takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
         takeProfit.tif(Types.TimeInForce.GTC);
@@ -868,11 +932,11 @@ public class OrderServiceImpl implements OrderService {
         //takeProfit.parentId(parentOrderId);
         takeProfit.account(getTradingAccount());
         takeProfit.transmit(false);
-        takeProfit.ocaGroup("OCA_"+parentOrderId);
+        takeProfit.ocaGroup("OCA_" + parentOrderId);
         takeProfit.ocaType(1);
 
         bracketOrder.add(takeProfit);
-        OrderEntity takeProfitOrderEntity = persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false, null, parentOrderEntity, null);
+        OrderEntity takeProfitOrderEntity = persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, false, null, parentOrderEntity, null, null, null);
 
         Order ocaHedge = new Order();
         ocaHedge.orderId(parent.orderId() + 2);
@@ -882,19 +946,18 @@ public class OrderServiceImpl implements OrderService {
         ocaHedge.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
         ocaHedge.tif(Types.TimeInForce.GTC);
         ocaHedge.outsideRth(true);
-        ocaHedge.displaySize(0);
+        ocaHedge.hidden(true);
         ocaHedge.totalQuantity(quantity * hedgeQtyMultiplier);
         ocaHedge.account(getTradingAccount());
         ocaHedge.transmit(false);
-        ocaHedge.ocaGroup("OCA_"+parentOrderId);
+        ocaHedge.ocaGroup("OCA_" + parentOrderId);
         ocaHedge.ocaType(1);
 
 
         bracketOrder.add(ocaHedge);
 
-        Contract ocaHedgeContract = ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol()))? getBaseService().createContract("M"+contract.symbol()) : contract;
-        OrderEntity ocaHedgeOrderEntity = persistOrder(ocaHedge, ocaHedgeContract, orderTrigger, orderTriggerInterval, false,null, parentOrderEntity, hedgeQtyMultiplier);
-
+        Contract ocaHedgeContract = ("NQ".equalsIgnoreCase(contract.symbol()) || "ES".equalsIgnoreCase(contract.symbol())) ? getBaseService().createContract("M" + contract.symbol()) : contract;
+        OrderEntity ocaHedgeOrderEntity = persistOrder(ocaHedge, ocaHedgeContract, orderTrigger, orderTriggerInterval, false, null, parentOrderEntity, hedgeQtyMultiplier, null, null);
 
 
         return bracketOrder;
@@ -908,7 +971,7 @@ public class OrderServiceImpl implements OrderService {
         parent.orderId(parentOrderId);
         parent.action(action.toUpperCase());
         parent.orderType(com.ib.client.OrderType.LMT);
-        parent.displaySize(0);
+        parent.hidden(true);
         parent.totalQuantity(quantity);
         parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(limitPrice));
         parent.tif(Types.TimeInForce.GTC);
@@ -918,7 +981,7 @@ public class OrderServiceImpl implements OrderService {
         //The LAST CHILD will have it set to true.
         parent.transmit(false);
 
-        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, true);
+        persistOrder(parent, contract, orderTrigger, orderTriggerInterval, true, null, null);
 
         List<Order> bracketOrder = new ArrayList<>();
         bracketOrder.add(parent);
@@ -928,7 +991,7 @@ public class OrderServiceImpl implements OrderService {
             takeProfit.orderId(parent.orderId() + 1);
             takeProfit.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
             takeProfit.orderType(com.ib.client.OrderType.LMT);
-            takeProfit.displaySize(0);
+            takeProfit.hidden(true);
             takeProfit.totalQuantity(quantity);
             takeProfit.lmtPrice(roundOffDoubleForPriceDecimalFormat(takeProfitLimitPrice));
             takeProfit.tif(Types.TimeInForce.GTC);
@@ -937,7 +1000,7 @@ public class OrderServiceImpl implements OrderService {
             takeProfit.parentId(parentOrderId);
             takeProfit.transmit(true);
 
-            persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, true);
+            persistOrder(takeProfit, contract, orderTrigger, orderTriggerInterval, true, null, null);
 
             bracketOrder.add(takeProfit);
         } else {
@@ -948,6 +1011,32 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
+    private Order createSingleOrder(int orderId, String action, double quantity, double limitPrice, Contract contract, String orderTrigger, String orderTriggerInterval, boolean enableOrth) {
+
+        // LOGGER.info("Creating single order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], interval=[{}]", orderTrigger, orderId, action, quantity, limitPrice, orderTriggerInterval);
+        //This will be our main or "parent" order
+        Order order = new Order();
+        order.orderId(orderId);
+        order.action(action.toUpperCase());
+        order.orderType(com.ib.client.OrderType.LMT);
+        order.hidden(true);
+        order.totalQuantity(quantity);
+        order.lmtPrice(limitPrice);
+        order.tif(Types.TimeInForce.GTC);
+        if (enableOrth) {
+            order.outsideRth(true);
+        }
+        //order.account(getTradingAccount());
+        order.account(DEFAULT_TRADING_ACCOUNT_NUMBER);
+        order.transmit(true);
+
+        // This is delaying the order creation hence commented and added later after orders are sent to TWS
+        // persistOrder(order, contract, orderTrigger, orderTriggerInterval, true);
+
+        return order;
+    }
+
+
     private Order updateOrder(Integer orderId, Integer parentOrderId, String action, Integer quantity, Double limitPrice, Double triggerPrice, Contract contract, String orderType, String orderTrigger, String orderTriggerInterval) {
 
         LOGGER.error("Updating order with OrderId=[{}], target price=[{}], quantity=[{}], ParentOrderId=[{}]", orderId, limitPrice, quantity, parentOrderId);
@@ -955,8 +1044,8 @@ public class OrderServiceImpl implements OrderService {
         updateOrder.orderId(orderId);
         updateOrder.action(action.toUpperCase());
         updateOrder.orderType(orderType);
-        updateOrder.displaySize(0);
         updateOrder.totalQuantity(quantity);
+        updateOrder.hidden(true);
 
         if (OrderType.STP_LMT.getApiString().equalsIgnoreCase(orderType)) {
             updateOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(triggerPrice));
@@ -972,14 +1061,14 @@ public class OrderServiceImpl implements OrderService {
         updateOrder.account(getTradingAccount());
         updateOrder.transmit(true);
 
-        persistOrder(updateOrder, contract, orderTrigger, orderTriggerInterval, true);
+        persistOrder(updateOrder, contract, orderTrigger, orderTriggerInterval, true, null, null);
 
 
         return updateOrder;
     }
 
 
-    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier) {
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType) {
         OrderEntity orderEntity = new OrderEntity();
         orderEntity.setOrderId(order.orderId());
         orderEntity.setSymbol(contract.symbol());
@@ -997,6 +1086,8 @@ public class OrderServiceImpl implements OrderService {
         orderEntity.setOrderTrigger(orderTrigger);
         orderEntity.setOrderTriggerInterval(orderTriggerInterval);
         orderEntity.setOptionsOrder(isOptionsOrder);
+        orderEntity.setSequenceId(sequenceId);
+        orderEntity.setOtsOrderType(otsOrderType);
 
         // Set fields for Options order
         if (isOptionsOrder) {
@@ -1006,13 +1097,13 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // Set fields for hedge order
-        orderEntity.setOcaHedgeMultiplier(hedgeQtyMultiplier ==null? 1 : hedgeQtyMultiplier);
+        orderEntity.setOcaHedgeMultiplier(hedgeQtyMultiplier == null ? 1 : hedgeQtyMultiplier);
 
 
         // Set default status if Order is new
 
-        Optional<OrderEntity> optionalOrderEntity =  getOrderRepository().findById(order.orderId());
-        if(!optionalOrderEntity.isPresent()){
+        Optional<OrderEntity> optionalOrderEntity = getOrderRepository().findById(order.orderId());
+        if (!optionalOrderEntity.isPresent()) {
             orderEntity.setOrderStatus(DEFAULT_STATUS);
         }
 
@@ -1021,10 +1112,10 @@ public class OrderServiceImpl implements OrderService {
             getOrderRepository().findById(order.parentId()).ifPresent(orderEntity::setParentOrder);
         }
         orderEntity.setCreatedTimestamp(new java.sql.Timestamp(new Date().getTime()));
-        if(!CollectionUtils.isEmpty(ocaOrders)) {
+        if (!CollectionUtils.isEmpty(ocaOrders)) {
             orderEntity.setOcaOrders(ocaOrders);
         }
-        if(parentOcaOrder !=null){
+        if (parentOcaOrder != null) {
             orderEntity.setParentOcaOrder(parentOcaOrder);
         }
         getOrderRepository().save(orderEntity);
@@ -1037,62 +1128,60 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        LOGGER.info("##### ***** >>> TWS order id [{}], Sequence id [{}], OTS Order Type [{}] ***** #####", order.orderId(), sequenceId, otsOrderType);
+
         Optional<OrderEntity> orderEntity1 = getOrderRepository().findById(order.orderId());
-        if(orderEntity1.isPresent()){
-            return orderEntity1.get();
-        } else {
-            return orderEntity;
-        }
+        return orderEntity1.orElse(orderEntity);
     }
 
-    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated) {
-        return persistOrder( order,  contract,  orderTrigger,  orderTriggerInterval,  waitForOrdersToBeCreated, null, null, null);
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, String sequenceId, String otsOrderType) {
+        return persistOrder(order, contract, orderTrigger, orderTriggerInterval, waitForOrdersToBeCreated, null, null, null, sequenceId, otsOrderType);
     }
 
-    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, Integer hedgeQtyMultiplier) {
-     return persistOrder( order,  contract,  orderTrigger,  orderTriggerInterval,  waitForOrdersToBeCreated, null, null, hedgeQtyMultiplier);
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType) {
+        return persistOrder(order, contract, orderTrigger, orderTriggerInterval, waitForOrdersToBeCreated, null, null, hedgeQtyMultiplier, sequenceId, otsOrderType);
     }
 
 
-    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier) {
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType) {
         if (BaseServiceImpl.OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType())) {
-            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated, null, null, null);
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated, null, null, null, sequenceId, otsOrderType);
         } else {
-            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated, ocaOrders, parentOcaOrder, hedgeQtyMultiplier);
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated, ocaOrders, parentOcaOrder, hedgeQtyMultiplier, sequenceId, otsOrderType);
         }
     }
 
     @Override
-    public void deleteAllInactiveOrders(){
+    public void deleteAllInactiveOrders() {
         Iterable<OrderEntity> ordersIterable = getOrderRepository().findAll();
         List<OrderEntity> orders = new ArrayList<>();
 
-        if(ordersIterable !=null){
+        if (ordersIterable != null) {
             ordersIterable.forEach(orders::add);
         }
 
-        if(!orders.isEmpty()) {
+        if (!orders.isEmpty()) {
             List<OrderEntity> inactiveOrders = orders.stream().filter(order -> "PreSubmitted".equalsIgnoreCase(order.getOrderStatus()) || "Submitted".equalsIgnoreCase(order.getOrderStatus()) || "Inactive".equalsIgnoreCase(order.getOrderStatus()) || "Cancelled".equalsIgnoreCase(order.getOrderStatus())).collect(Collectors.toList());
 
             LOGGER.info("Deleting {} inactive orders", inactiveOrders.size());
 
-            List<OrderEntity> childOrders =  inactiveOrders.stream().filter(order -> order.getParentOrder()!=null || order.getParentOcaOrder() !=null).collect(Collectors.toList());
+            List<OrderEntity> childOrders = inactiveOrders.stream().filter(order -> order.getParentOrder() != null || order.getParentOcaOrder() != null).collect(Collectors.toList());
 
-            List<OrderEntity> parentOrders =  inactiveOrders.stream().filter(order -> order.getParentOrder()==null && order.getParentOcaOrder()==null).collect(Collectors.toList());
+            List<OrderEntity> parentOrders = inactiveOrders.stream().filter(order -> order.getParentOrder() == null && order.getParentOcaOrder() == null).collect(Collectors.toList());
 
             childOrders.forEach(this::deleteOrderIfExists);
             parentOrders.forEach(this::deleteOrderIfExists);
         }
     }
 
-    private void deleteOrderIfExists(OrderEntity orderEntity){
-        if(orderEntity !=null && orderEntity.getOrderId() != null) {
+    private void deleteOrderIfExists(OrderEntity orderEntity) {
+        if (orderEntity != null && orderEntity.getOrderId() != null) {
             Optional<OrderEntity> orderToBeDeleted = getOrderRepository().findById(orderEntity.getOrderId());
-            if(orderToBeDeleted.isPresent()){
+            if (orderToBeDeleted.isPresent()) {
                 try {
                     getOrderRepository().delete(orderToBeDeleted.get());
-                } catch (Exception ex){
-                    LOGGER.warn("Could not delete order with id "+orderEntity.getOrderId());
+                } catch (Exception ex) {
+                    LOGGER.warn("Could not delete order with id " + orderEntity.getOrderId());
                 }
             }
 

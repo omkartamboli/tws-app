@@ -9,6 +9,7 @@ import com.trading.app.tradingapp.service.OrderService;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import java.util.Date;
 
 
 @RestController
@@ -25,6 +26,8 @@ public class OrderController {
     private static final String PIVOT_BREAK_ORDER = "Automated Order - PIVOT_BREAK_ORDER";
 
     private static final String PIVOT_AND_VOLUME_BREAK_ORDER = "Automated Order - PIVOT_AND_VOLUME_BREAK_ORDER";
+
+    private static final String OT_STAR_ORDER = "Automated Order - OT_STAR_ORDER";
 
     private static final String RKL_TRADE = "Automated Order - RKL_TRADE";
 
@@ -76,7 +79,9 @@ public class OrderController {
         return  orderService.createOrder(rklTradeOrderRequestDto, RKL_TRADE);
     }
 
-
-
-
+    @PostMapping("/otstartrade")
+    @ResponseBody
+    public CreateSetOrderResponseDto CreateOTStarTradeOrder(@RequestBody OtStarTradeOrderRequestDto otStarTradeOrderRequestDto){
+        return orderService.createOrder(otStarTradeOrderRequestDto, OT_STAR_ORDER);
+    }
 }
