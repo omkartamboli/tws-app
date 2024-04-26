@@ -6,6 +6,8 @@ public class OtStarTradeOrderRequestDto {
     String ticker;
     String time;
     Double entry;
+    Double high;
+    Double low;
     Integer quantity;
     String interval;
     String orderType;
@@ -74,6 +76,22 @@ public class OtStarTradeOrderRequestDto {
 
     public void setOtsOrderType(String otsOrderType) {
         this.otsOrderType = otsOrderType;
+    }
+
+    public Double getHigh() {
+        return high;
+    }
+
+    public void setHigh(Double high) {
+        this.high = high;
+    }
+
+    public Double getLow() {
+        return low;
+    }
+
+    public void setLow(Double low) {
+        this.low = low;
     }
 }
 

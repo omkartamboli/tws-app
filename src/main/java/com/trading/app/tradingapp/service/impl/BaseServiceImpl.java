@@ -676,7 +676,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public void nextValidId(int orderId) {
-        LOGGER.info("Received next order id from TWS [{}] ***", orderId);
+        // LOGGER.info("Received next order id from TWS [{}] ***", orderId);
         setNextTWSOrderId(orderId);
     }
 

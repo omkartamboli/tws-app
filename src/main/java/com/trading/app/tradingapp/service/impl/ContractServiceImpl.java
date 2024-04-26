@@ -100,7 +100,7 @@ public class ContractServiceImpl implements ContractService {
                 }
 
                 // If latest LTP is updated by Base service in this map use it, else get latest updated LTP using thread
-                Double tickerLtp = sequenceTracker.getLtp() == null ? getLatestTickerLTP(ticker) : sequenceTracker.getLtp();
+                Double tickerLtp = getLatestTickerLTP(ticker);
 
                 // If ticker just initiated
                 if (sequenceTracker.getNextBuyValue() == 0.0d && sequenceTracker.getLastBuyValue() == 0.0d) {
@@ -193,7 +193,7 @@ public class ContractServiceImpl implements ContractService {
                 }
 
                 // If latest LTP is updated by Base service in this map use it, else get latest updated LTP using thread
-                Double tickerLtp = sequenceTracker.getLtp() == null ? getLatestTickerLTP(ticker) : sequenceTracker.getLtp();
+                Double tickerLtp = getLatestTickerLTP(ticker);
 
                 // If ticker just initiated
                 if (sequenceTracker.getNextSellValue() == 0.0d && sequenceTracker.getLastSellValue() == 0.0d) {
@@ -376,11 +376,17 @@ public class ContractServiceImpl implements ContractService {
         return getMarketDataResponseDto;
     }
 
-    private Double getLatestTickerLTP(String ticker) throws Exception {
-        UpdateSequenceTrackerThread thread = new UpdateSequenceTrackerThread(getTickerSequenceTrackerMap().get(ticker), getContractRepository(), ticker);
-        thread.start();
-        thread.join();
-        return getTickerSequenceTrackerMap().get(ticker).getLtp();
+    @Override
+    public Double getLatestTickerLTP(String ticker) throws Exception {
+        if(tickerSequenceTrackerMap.get(ticker).getLtp() != null){
+            return tickerSequenceTrackerMap.get(ticker).getLtp();
+        }
+        else {
+            UpdateSequenceTrackerThread thread = new UpdateSequenceTrackerThread(getTickerSequenceTrackerMap().get(ticker), getContractRepository(), ticker);
+            thread.start();
+            thread.join();
+            return getTickerSequenceTrackerMap().get(ticker).getLtp();
+        }
     }
 
     public BaseService getBaseService() {

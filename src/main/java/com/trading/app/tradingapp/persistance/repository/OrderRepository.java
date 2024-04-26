@@ -15,11 +15,15 @@ public interface OrderRepository extends CrudRepository<OrderEntity, Integer> {
 
     List<OrderEntity> findBySequenceId(String sequenceId);
 
-    @Query("select order from OrderEntity order where order.parentOcaOrder = :order" )
+    List<OrderEntity> findBySequenceIdAndOtsOrderType(String sequenceId, String otsOrderType);
+
+    @Query("select order from OrderEntity order where order.parentOcaOrder = :order")
     List<OrderEntity> findByParentOcaOrder(@Param("order") OrderEntity order);
 
     List<OrderEntity> findBySymbolAndOrderStatusNotIn(String symbol, List<String> orderStatuses);
 
     List<OrderEntity> findByOrderStatusIn(List<String> orderStatuses);
+
+
 
 }

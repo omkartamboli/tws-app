@@ -1,8 +1,17 @@
+SELECT * FROM tradingApp.order_entity where created_timestamp > '2023-04-04 08:05:55.825000' order by created_timestamp desc;
+
 SELECT * FROM tradingApp.order_entity;
+
+
 
 SELECT * FROM tradingApp.contract_entity;
 
 SELECT * FROM tradingApp.system_config_entity;
+
+select * from  tradingApp.order_entity where order_id not in (1,4,7,10,37,40,43,49,52,55,58,61,64,67,70,73,76,79,82,85,88,115,118,121,124,127,130,133,136,139,142,151,154,157,160,163,166,169,172,175,178,181,184,187,190,193,196,199,202,205,208,211,214,217,220,223,226,229,232,235,238,241,244,247,250,253,256,259,261,264,267,270,273,276,279,282,285,288,297,300,303,306,309,310,313,316,319,322,325,328,337,340,343,346,349,352,355,358,361,364,367,370,376,394,398,400,403,406,409,412,415,418,421,424,427,430,433);
+
+select distinct(parent_order_order_id) from tradingApp.order_entity;
+
 
 -- UPDATE `tradingApp`.`system_config_entity` SET `boolean_value` = 1 WHERE (`property` = 'divergence.order.enabled'); SELECT * FROM tradingApp.system_config_entity;
 
@@ -10,9 +19,9 @@ SELECT * FROM tradingApp.system_config_entity;
 
 
 
--- delete from tradingApp.order_entity where parent_order_order_id > 0  and order_id > 1;
+delete from tradingApp.order_entity where parent_order_order_id > 0  and order_id > 0;
 
--- delete from tradingApp.order_entity where order_id > 0 and order_id > 1;
+delete from tradingApp.order_entity where order_id > 0;
 
 
 -- delete from tradingApp.order_entity where parent_order_order_id > 0  and order_trigger is null;
@@ -26,13 +35,67 @@ SELECT * FROM tradingApp.system_config_entity;
 -- delete from tradingApp.order_entity where order_status='Submitted';
 
 
+
 /*
 -- DELETE all ORDERs
+delete from tradingApp.order_entity where order_id not in (1,4,7,10,37,40,43,49,52,55,58,61,64,67,70,73,76,79,82,85,88,115,118,121,124,127,130,133,136,139,142,151,154,157,160,163,166,169,172,175,178,181,184,187,190,193,196,199,202,205,208,211,214,217,220,223,226,229,232,235,238,241,244,247,250,253,256,259,261,264,267,270,273,276,279,282,285,288,297,300,303,306,309,310,313,316,319,322,325,328,337,340,343,346,349,352,355,358,361,364,367,370,376,394,398,400,403,406,409,412,415,418,421,424,427,430,433);
 delete from tradingApp.order_entity where parent_order_order_id > 0 ;
 delete from tradingApp.order_entity where parent_oca_order_order_id > 0 ;
 delete from tradingApp.order_entity;
 
 */
+
+
+
+SELECT * FROM tradingApp.contract_entity;
+
+SELECT * from tradingApp.system_config_entity;
+
+
+update tradingApp.contract_entity
+set default_stop_loss = null ;
+
+-- select * from  tradingApp.order_entity;
+
+-- select order_id,sequence_id,quantity,filled,order_type from  tradingApp.order_entity where order_id >= 217 and sequence_id is not null order by order_id;
+
+select order_id,sequence_id,quantity,filled,order_type,transaction_price,avg_fill_price,ots_order_type from  tradingApp.order_entity where sequence_id like '%240409%' ;
+
+select order_id,sequence_id,quantity,filled,order_type,ots_order_type from  tradingApp.order_entity where (filled is null or filled < quantity) order by symbol,order_id;
+
+
+
+-- ---select * from  tradingApp.order_entity as a join tradingApp.order_entity as b on a.sequence_id=b.sequence_id and a.order_id <> b.order_id where (b.filled is null or b.filled < b.quantity) and a.ots_order_type <> b.ots_order_type;
+
+select order_id,sequence_id,quantity,filled,order_type,ots_order_type from  tradingApp.order_entity where (ots_order_type = 'SX' or ots_order_type = 'LX') and (filled is null or filled < quantity);
+
+
+select order_id,sequence_id,quantity,filled,order_type,ots_order_type from  tradingApp.order_entity where (filled is null or filled < quantity);
+
+select order_id,sequence_id,quantity,filled,order_type,ots_order_type from  tradingApp.order_entity where sequence_id like '%2404042112%' or sequence_id like '%2404050135%';
+
+
+use tradingApp;
+
+-- verify open positions
+select order_id,sequence_id,quantity,filled,order_type,ots_order_type from  tradingApp.order_entity where sequence_id in (select id from (select sequence_id as id , count(sequence_id) as count_si from  tradingApp.order_entity group by sequence_id) as table_a where count_si < 2);
+
+
+
+-- All orders
+select order_id,sequence_id,quantity,filled,order_type,ots_order_type from  tradingApp.order_entity where sequence_id is not null order by order_id;
+
+-- incomplete orders
+select order_id,sequence_id,transaction_price,quantity,filled,order_type,ots_order_type from  tradingApp.order_entity where sequence_id is not null and (filled is null or filled < quantity) order by order_id;
+-- select * from  tradingApp.order_entity where sequence_id is not null and (filled is null or filled < quantity) order by order_id;
+
+
+
+
+
+
+
+
 -- update  tradingApp.contract_entity set default_stop_loss=10 where  default_stop_loss is null;
 
 -- update  tradingApp.contract_entity set oca_Hedge_Multiplier=1;
@@ -54,6 +117,14 @@ delete from tradingApp.order_entity;
 -- INSERT INTO `tradingApp`.`system_config_entity` (`property`, `value`) VALUES ('order.type', 'TAKE_PROFIT_ORDER');
 -- INSERT INTO `tradingApp`.`system_config_entity` (`property`, `value`) VALUES ('order.type', 'TAKE_PROFIT_STOP_LOSS_ORDER');
 -- INSERT INTO `tradingApp`.`system_config_entity` (`property`, `value`) VALUES ('order.type', 'TRAILING_STOP_LOSS_ORDER');
+
+INSERT INTO `tradingApp`.`system_config_entity` (`property`, `boolean_value`) VALUES ('order.pessimisticOrderExitPrice', 1);
+
+
+-- select * from `tradingApp`.`system_config_entity`;
+
+
+
 
 -- select * from `tradingApp`.`system_config_entity` where value = 'TRAILING_STOP_LOSS_ORDER'
 

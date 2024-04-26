@@ -11,6 +11,7 @@ import com.trading.app.tradingapp.persistance.entity.OrderEntity;
 import com.trading.app.tradingapp.persistance.repository.ContractRepository;
 import com.trading.app.tradingapp.persistance.repository.OrderRepository;
 import com.trading.app.tradingapp.service.BaseService;
+import com.trading.app.tradingapp.service.ContractService;
 import com.trading.app.tradingapp.service.OrderService;
 import com.trading.app.tradingapp.service.SystemConfigService;
 import com.trading.app.tradingapp.util.JsonSerializer;
@@ -34,7 +35,9 @@ public class OrderServiceImpl implements OrderService {
     public static final String ORDER_TYPE_INVALID_MESSAGE = "Could not place an order because invalid order type is sent";
     public static final String PRIMARY_ORDER_DOES_NOT_EXIST_MESSAGE = "Could not find a primary order for an exit order, so skipping exit order creation";
     public static final String PRIMARY_ORDER_NOT_FILLED_MESSAGE = "Primary order is not filled for a given exit order, so skipping exit order creation. Also deleting primary order = \"[{}]\"";
+    public static final String ORDER_DOES_NOT_EXIST = "Order with order sequence id = \"[{}]\" and ots order type not found = \"[{}]\"";
     public static final String EXIT_ORDER_QUANTITY_CHANGED_TO_MATCH_PRIMARY_ORDER_MESSAGE = "Exit order quantity is changed to match the filled quantity on the primary order. Primary order=[{}], exit qty=[{}], changed qty=[{}]";
+    public static final String CME_FUTURES_SUFFIX = "1!";
     private static final String SECURITY_TYPE = "STK";
     private static final Logger LOGGER = LoggerFactory.getLogger(OrderServiceImpl.class);
     private static final double DEFAULT_ORDER_VALUE = 10000.00d;
@@ -45,6 +48,8 @@ public class OrderServiceImpl implements OrderService {
     private OrderRepository orderRepository;
     @Resource
     private ContractRepository contractRepository;
+    @Resource
+    private ContractService contractService;
     @Resource
     private SystemConfigService systemConfigService;
 
@@ -381,7 +386,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public CreateSetOrderResponseDto createOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger) {
         // LOGGER.info(JsonSerializer.serialize(otStarTradeOrderRequestDto));
-        Date start = new Date();
+        // Date start = new Date();
 
         if (!"BUY".equalsIgnoreCase(otStarTradeOrderRequestDto.getOrderType()) && !"SELL".equalsIgnoreCase(otStarTradeOrderRequestDto.getOrderType())) {
             LOGGER.error(ORDER_TYPE_INVALID_MESSAGE);
@@ -395,38 +400,86 @@ public class OrderServiceImpl implements OrderService {
                 return getFailedCreateSetOrderResult(PRIMARY_ORDER_DOES_NOT_EXIST_MESSAGE);
             } else {
                 OrderEntity primaryOrder = orderEntityList.get(0);
-                if(null == primaryOrder.getFilled() || primaryOrder.getFilled() == 0.0d){
+                if (null == primaryOrder.getFilled() || primaryOrder.getFilled() == 0.0d) {
                     LOGGER.error(PRIMARY_ORDER_NOT_FILLED_MESSAGE + "\n" + JsonSerializer.serialize(otStarTradeOrderRequestDto), primaryOrder.getOrderId());
-                    cancelOrder(primaryOrder.getOrderId());
+                    int primaryOrderId = primaryOrder.getOrderId();
+                    // remove order from DB if the order was not filled, to simplify order tracking
+                    getOrderRepository().deleteById(primaryOrderId);
+                    cancelOrder(primaryOrderId);
                     return getFailedCreateSetOrderResult(PRIMARY_ORDER_NOT_FILLED_MESSAGE.replace("[{}]", primaryOrder.getOrderId().toString()));
-                } else if(primaryOrder.getFilled().intValue() != otStarTradeOrderRequestDto.getQuantity()){
+                } else if (primaryOrder.getFilled().intValue() != otStarTradeOrderRequestDto.getQuantity()) {
                     cancelOrder(primaryOrder.getOrderId());
                     otStarTradeOrderRequestDto.setQuantity(primaryOrder.getFilled().intValue());
                     LOGGER.info(EXIT_ORDER_QUANTITY_CHANGED_TO_MATCH_PRIMARY_ORDER_MESSAGE, primaryOrder.getOrderId(), otStarTradeOrderRequestDto.getQuantity(), primaryOrder.getFilled());
+                }
+                if (isPessimisticOrderExitPriceEnabled()) {
+                    otStarTradeOrderRequestDto.setEntry("LX".equals(otStarTradeOrderRequestDto.getOtsOrderType()) ? otStarTradeOrderRequestDto.getLow() : otStarTradeOrderRequestDto.getHigh());
                 }
             }
         }
 
         try {
-            boolean enableOrth = !otStarTradeOrderRequestDto.getTicker().contains("1!");
-            String ticker = otStarTradeOrderRequestDto.getTicker().replace("1!", "");
-            Contract contract = getBaseService().createContract(ticker);
+            boolean enableOrth = !otStarTradeOrderRequestDto.getTicker().contains(CME_FUTURES_SUFFIX);
+            String ticker = otStarTradeOrderRequestDto.getTicker().replace(CME_FUTURES_SUFFIX, EMPTY_STRING);
             double tradePrice = roundOff(otStarTradeOrderRequestDto.getEntry(), otStarTradeOrderRequestDto.getTicker());
-            int quantity = otStarTradeOrderRequestDto.getQuantity();
 
+            try {
+                // Set tradePrice as LTP if latest LTP is available for ticker in DB.
+                tradePrice = getLtpForTicker(ticker);
+            } catch (Exception ex) {
+                LOGGER.error(ex.getMessage(), ex);
+                LOGGER.error("LTP could not be used as LTP is not available, using trade price on order to set limit order");
+            }
+
+            Contract contract = getBaseService().createContract(ticker);
+            int quantity = otStarTradeOrderRequestDto.getQuantity();
             EClientSocket eClientSocket = getBaseService().getConnection();
 
-            Order order = createSingleOrder(getNextOrderIdForOtStarTrade(), otStarTradeOrderRequestDto.getOrderType(), quantity, tradePrice, contract, orderTrigger, otStarTradeOrderRequestDto.getInterval(), enableOrth);
+            Order order = null;
+            int orderId = -1;
 
-            eClientSocket.placeOrder(order.orderId(), contract, order);
+            // Synchronizing the order creation block to avoid creating orders with duplicate order ID
+            synchronized (this) {
+                try {
+                    order = createSingleOrder(getBaseService().getNextOrderId(), otStarTradeOrderRequestDto.getOrderType(), quantity, tradePrice, enableOrth);
+                    orderId = order.orderId();
+                    eClientSocket.placeOrder(order.orderId(), contract, order);
+                } catch (Exception ex) {
+                    LOGGER.error("Could not place a OT-Star order with order id = [{}].", orderId, ex);
+                    return getFailedCreateSetOrderResult(ex);
+                }
+            }
 
-            Date end = new Date();
+            // Date end = new Date();
 
             // persisting the order after order is sent to TWS, to avoid delay in sending orders to exchange
             persistOrder(order, contract, orderTrigger, otStarTradeOrderRequestDto.getInterval(), true, otStarTradeOrderRequestDto.getSequenceId(), otStarTradeOrderRequestDto.getOtsOrderType());
+            // LOGGER.info("OTS-Create Order API execution time is [{}] ms", end.getTime() - start.getTime());
 
-            LOGGER.info("OTS-Create Order API execution time is [{}] ms", end.getTime() - start.getTime());
+            int counter = 0;
 
+            while (counter < 30) {
+                try {
+                    OrderEntity orderEntity = getSingleOrderByOrderId(orderId);
+                    int filledQty = orderEntity.getFilled() == null ? 0 : orderEntity.getFilled().intValue();
+                    if (filledQty == otStarTradeOrderRequestDto.getQuantity()) {
+                        if (counter > 0) {
+                            LOGGER.info("Filled order in LTP reset retry no [{}]", counter);
+                        }
+                        break;
+                    } else {
+                        double latestLTP = getContractService().getLatestTickerLTP(ticker);
+                        Order updateOrder = updateOrderTransactionPrice(orderEntity, latestLTP);
+                        eClientSocket.placeOrder(updateOrder.orderId(), contract, updateOrder);
+                        LOGGER.info("Updating transaction rice for order [{}] with latest LTP [{}]", updateOrder.orderId(), latestLTP);
+                        counter++;
+                        Thread.sleep(5000);
+                    }
+                } catch (Exception ex) {
+                    Thread.sleep(5000);
+                    counter++;
+                }
+            }
             return getSuccessCreateSetOrderResult(List.of(order.orderId()));
         } catch (Exception ex) {
             LOGGER.error("Could not place a OT-Star order.", ex);
@@ -434,18 +487,46 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private synchronized int getNextOrderIdForOtStarTrade() throws Exception {
-        synchronized (this) {
-            return getBaseService().getNextOrderId();
+    private OrderEntity getSingleOrderByOrderId(int orderId) throws Exception {
+        List<OrderEntity> orderEntityList = getOrderRepository().findByOrderId(orderId);
+        if (CollectionUtils.isEmpty(orderEntityList)) {
+            throw new Exception();
+        }
+        return orderEntityList.get(0);
+    }
+
+    private int getFilledQtyForOrderBySequenceIdAndOtsOrderType(String sequenceId, String otsOrderType) throws Exception {
+        List<OrderEntity> orderEntityList = getOrderRepository().findBySequenceIdAndOtsOrderType(sequenceId, otsOrderType);
+        if (CollectionUtils.isEmpty(orderEntityList)) {
+            throw new Exception(ORDER_DOES_NOT_EXIST.replace("[{}]", sequenceId).replace("[{}]", otsOrderType));
+        } else {
+            //int twsOrderId = orderEntityList.get(0).getOrderId();
+            return Objects.isNull(orderEntityList.get(0).getFilled()) ? 0 : orderEntityList.get(0).getFilled().intValue();
         }
     }
+
+    private OrderEntity getOrderQtyForOrderBySequenceIdAndOtsOrderType(String sequenceId, String otsOrderType) throws Exception {
+        List<OrderEntity> orderEntityList = getOrderRepository().findBySequenceIdAndOtsOrderType(sequenceId, otsOrderType);
+        if (CollectionUtils.isEmpty(orderEntityList)) {
+            throw new Exception(ORDER_DOES_NOT_EXIST.replace("[{}]", sequenceId).replace("[{}]", otsOrderType));
+        } else {
+            //int twsOrderId = orderEntityList.get(0).getOrderId();
+            return orderEntityList.get(0);
+        }
+    }
+
+//    private synchronized int getNextOrderIdForOtStarTrade() throws Exception {
+//        synchronized (this) {
+//            return getBaseService().getNextOrderId();
+//        }
+//    }
 
 
     private boolean checkIfTradeHasCrossedTheSLLimit(double entry, double sl, String ticker) {
         if (ticker == null || EMPTY_STRING.equals(ticker)) {
             return false;
         }
-        List<ContractEntity> contractEntityList = getContractRepository().findBySymbol(ticker.replace("1!", EMPTY_STRING));
+        List<ContractEntity> contractEntityList = getContractRepository().findBySymbol(ticker.replace(CME_FUTURES_SUFFIX, EMPTY_STRING));
         if (!CollectionUtils.isEmpty(contractEntityList)) {
             ContractEntity contractEntity = contractEntityList.get(0);
 
@@ -1011,7 +1092,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
-    private Order createSingleOrder(int orderId, String action, double quantity, double limitPrice, Contract contract, String orderTrigger, String orderTriggerInterval, boolean enableOrth) {
+    private Order createSingleOrder(int orderId, String action, double quantity, double tradePrice, boolean enableOrth) {
 
         // LOGGER.info("Creating single order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], interval=[{}]", orderTrigger, orderId, action, quantity, limitPrice, orderTriggerInterval);
         //This will be our main or "parent" order
@@ -1021,7 +1102,7 @@ public class OrderServiceImpl implements OrderService {
         order.orderType(com.ib.client.OrderType.LMT);
         order.hidden(true);
         order.totalQuantity(quantity);
-        order.lmtPrice(limitPrice);
+        order.lmtPrice(tradePrice);
         order.tif(Types.TimeInForce.GTC);
         if (enableOrth) {
             order.outsideRth(true);
@@ -1035,7 +1116,6 @@ public class OrderServiceImpl implements OrderService {
 
         return order;
     }
-
 
     private Order updateOrder(Integer orderId, Integer parentOrderId, String action, Integer quantity, Double limitPrice, Double triggerPrice, Contract contract, String orderType, String orderTrigger, String orderTriggerInterval) {
 
@@ -1134,6 +1214,21 @@ public class OrderServiceImpl implements OrderService {
         return orderEntity1.orElse(orderEntity);
     }
 
+
+    private Order updateOrderTransactionPrice(OrderEntity orderEntity, double newTransactionPrice) {
+        LOGGER.info("Updating order with OrderId=[{}], to latest LTP as transaction price=[{}]", orderEntity.getOrderId(), newTransactionPrice);
+        Order updateOrder = new Order();
+        updateOrder.orderId(orderEntity.getOrderId());
+        updateOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(newTransactionPrice));
+        updateOrder.transmit(true);
+
+        orderEntity.setTransactionPrice(newTransactionPrice);
+        orderEntity.setStatusUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
+        getOrderRepository().save(orderEntity);
+        return updateOrder;
+    }
+
+
     private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, String sequenceId, String otsOrderType) {
         return persistOrder(order, contract, orderTrigger, orderTriggerInterval, waitForOrdersToBeCreated, null, null, null, sequenceId, otsOrderType);
     }
@@ -1161,7 +1256,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         if (!orders.isEmpty()) {
-            List<OrderEntity> inactiveOrders = orders.stream().filter(order -> "PreSubmitted".equalsIgnoreCase(order.getOrderStatus()) || "Submitted".equalsIgnoreCase(order.getOrderStatus()) || "Inactive".equalsIgnoreCase(order.getOrderStatus()) || "Cancelled".equalsIgnoreCase(order.getOrderStatus())).collect(Collectors.toList());
+            //List<OrderEntity> inactiveOrders = orders.stream().filter(order -> "PreSubmitted".equalsIgnoreCase(order.getOrderStatus()) || "Submitted".equalsIgnoreCase(order.getOrderStatus()) || "Inactive".equalsIgnoreCase(order.getOrderStatus()) || "Cancelled".equalsIgnoreCase(order.getOrderStatus())).collect(Collectors.toList());
+
+            List<OrderEntity> inactiveOrders = orders.stream().filter(order -> "Cancelled".equalsIgnoreCase(order.getOrderStatus())).collect(Collectors.toList());
 
             LOGGER.info("Deleting {} inactive orders", inactiveOrders.size());
 
@@ -1186,6 +1283,22 @@ public class OrderServiceImpl implements OrderService {
             }
 
         }
+    }
+
+    private Double getLtpForTicker(String ticker) throws Exception {
+
+        List<ContractEntity> contractEntityList = getContractRepository().findBySymbol(ticker.replace(CME_FUTURES_SUFFIX, EMPTY_STRING));
+        if (!CollectionUtils.isEmpty(contractEntityList)) {
+            ContractEntity contractEntity = contractEntityList.get(0);
+            if (null != contractEntity && null != contractEntity.getLtp()) {
+                if ((new Date().getTime() - contractEntity.getLtpTimestamp().getTime()) > 5000) {
+                    throw new Exception("Stale LTP data for contract entity [ " + ticker + " ]");
+                }
+                return contractEntity.getLtp();
+            }
+        }
+        String error = "Contract entity [ " + ticker + " ] not found in database";
+        throw new IllegalArgumentException(error);
     }
 
     public BaseService getBaseService() {
@@ -1232,6 +1345,10 @@ public class OrderServiceImpl implements OrderService {
         return Boolean.TRUE.equals(getSystemConfigService().getBoolean("out.of.hours.order.enabled"));
     }
 
+    private boolean isPessimisticOrderExitPriceEnabled() {
+        return Boolean.TRUE.equals(getSystemConfigService().getBoolean("order.pessimisticOrderExitPrice"));
+    }
+
     private Double getDefaultOrderValue() {
         return getSystemConfigService().getDouble("default.order.value");
     }
@@ -1262,6 +1379,14 @@ public class OrderServiceImpl implements OrderService {
 
     public void setContractRepository(ContractRepository contractRepository) {
         this.contractRepository = contractRepository;
+    }
+
+    public ContractService getContractService() {
+        return contractService;
+    }
+
+    public void setContractService(ContractService contractService) {
+        this.contractService = contractService;
     }
 }
 
