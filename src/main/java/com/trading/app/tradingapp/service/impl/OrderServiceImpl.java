@@ -34,6 +34,7 @@ public class OrderServiceImpl implements OrderService {
     public static final String MID_SL_FAILED_MESSAGE = "Could not place an order because midSL filter has failed.";
     public static final String ORDER_TYPE_INVALID_MESSAGE = "Could not place an order because invalid order type is sent";
     public static final String PRIMARY_ORDER_DOES_NOT_EXIST_MESSAGE = "Could not find a primary order for an exit order, so skipping exit order creation";
+    public static final String INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER = "Invalid outstanding quantity for an exit order, so skipping exit order creation";
     public static final String PRIMARY_ORDER_NOT_FILLED_MESSAGE = "Primary order is not filled for a given exit order, so skipping exit order creation. Also deleting primary order = \"[{}]\"";
     public static final String ORDER_DOES_NOT_EXIST = "Order with order sequence id = \"[{}]\" and ots order type not found = \"[{}]\"";
     public static final String EXIT_ORDER_QUANTITY_CHANGED_TO_MATCH_PRIMARY_ORDER_MESSAGE = "Exit order quantity is changed to match the filled quantity on the primary order. Primary order=[{}], exit qty=[{}], changed qty=[{}]";
@@ -393,34 +394,36 @@ public class OrderServiceImpl implements OrderService {
             return getFailedCreateSetOrderResult(ORDER_TYPE_INVALID_MESSAGE);
         }
 
-        if ("LX".equals(otStarTradeOrderRequestDto.getOtsOrderType()) || "SX".equals(otStarTradeOrderRequestDto.getOtsOrderType())) {
-            List<OrderEntity> orderEntityList = getOrderRepository().findBySequenceId(otStarTradeOrderRequestDto.getSequenceId());
-            if (CollectionUtils.isEmpty(orderEntityList)) {
-                LOGGER.error(PRIMARY_ORDER_DOES_NOT_EXIST_MESSAGE + "\n" + JsonSerializer.serialize(otStarTradeOrderRequestDto));
-                return getFailedCreateSetOrderResult(PRIMARY_ORDER_DOES_NOT_EXIST_MESSAGE);
-            } else {
-                OrderEntity primaryOrder = orderEntityList.get(0);
-                if (null == primaryOrder.getFilled() || primaryOrder.getFilled() == 0.0d) {
-                    LOGGER.error(PRIMARY_ORDER_NOT_FILLED_MESSAGE + "\n" + JsonSerializer.serialize(otStarTradeOrderRequestDto), primaryOrder.getOrderId());
-                    int primaryOrderId = primaryOrder.getOrderId();
-                    // remove order from DB if the order was not filled, to simplify order tracking
-                    getOrderRepository().deleteById(primaryOrderId);
-                    cancelOrder(primaryOrderId);
-                    return getFailedCreateSetOrderResult(PRIMARY_ORDER_NOT_FILLED_MESSAGE.replace("[{}]", primaryOrder.getOrderId().toString()));
-                } else if (primaryOrder.getFilled().intValue() != otStarTradeOrderRequestDto.getQuantity()) {
-                    cancelOrder(primaryOrder.getOrderId());
-                    otStarTradeOrderRequestDto.setQuantity(primaryOrder.getFilled().intValue());
-                    LOGGER.info(EXIT_ORDER_QUANTITY_CHANGED_TO_MATCH_PRIMARY_ORDER_MESSAGE, primaryOrder.getOrderId(), otStarTradeOrderRequestDto.getQuantity(), primaryOrder.getFilled());
+        String ticker = otStarTradeOrderRequestDto.getTicker().replace(CME_FUTURES_SUFFIX, EMPTY_STRING);
+        boolean isLongExitOrder = "LX".equals(otStarTradeOrderRequestDto.getOtsOrderType());
+        boolean isShortExitOrder = "SX".equals(otStarTradeOrderRequestDto.getOtsOrderType());
+        boolean isExitOrder = isLongExitOrder || isShortExitOrder;
+
+        if (isExitOrder) {
+
+            int outstandingQty = orderRepository.findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger);
+
+            if (isLongExitOrder && outstandingQty > 0 || isShortExitOrder && outstandingQty < 0) {
+                // The exit order should make outstanding quantity zero
+                otStarTradeOrderRequestDto.setQuantity(Math.abs(outstandingQty));
+
+                // Once we have set the exit order quantity to outstanding quantity, we want to cancel all unfilled orders to avoid quantity ambiguity
+                List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrders(ticker, orderTrigger);
+                if (!CollectionUtils.isEmpty(unFilledOrderList)) {
+                    unFilledOrderList.forEach(orderEntity -> cancelOrder(orderEntity.getOrderId()));
                 }
                 if (isPessimisticOrderExitPriceEnabled()) {
-                    otStarTradeOrderRequestDto.setEntry("LX".equals(otStarTradeOrderRequestDto.getOtsOrderType()) ? otStarTradeOrderRequestDto.getLow() : otStarTradeOrderRequestDto.getHigh());
+                    otStarTradeOrderRequestDto.setEntry(isLongExitOrder ? otStarTradeOrderRequestDto.getLow() : otStarTradeOrderRequestDto.getHigh());
                 }
+            } else {
+
+                LOGGER.error(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER + ". Outstanding qty = [{}] \n" + JsonSerializer.serialize(otStarTradeOrderRequestDto), outstandingQty);
+                return getFailedCreateSetOrderResult(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER);
             }
         }
 
         try {
             boolean enableOrth = !otStarTradeOrderRequestDto.getTicker().contains(CME_FUTURES_SUFFIX);
-            String ticker = otStarTradeOrderRequestDto.getTicker().replace(CME_FUTURES_SUFFIX, EMPTY_STRING);
             double tradePrice = roundOff(otStarTradeOrderRequestDto.getEntry(), otStarTradeOrderRequestDto.getTicker());
 
             try {
