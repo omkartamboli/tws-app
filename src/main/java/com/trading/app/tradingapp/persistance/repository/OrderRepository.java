@@ -20,10 +20,13 @@ public interface OrderRepository extends CrudRepository<OrderEntity, Integer> {
     @Query("select order from OrderEntity order where order.parentOcaOrder = :order")
     List<OrderEntity> findByParentOcaOrder(@Param("order") OrderEntity order);
     
-    @Query("select tab_a.sel_filled_a-tab_b.sel_filled_b from (select sum(order_a.filled) as sel_filled_a from OrderEntity order_a where order_a.orderTrigger = :trigger and order_a.symbol = :symbol and order_a.orderAction = 'BUY') as tab_a, (select sum(order_b.filled) as sel_filled_b from OrderEntity order_b where order_b.orderTrigger = :trigger and order_b.symbol = :symbol and order_b.orderAction = 'SELL') as tab_b")
-    int findOutstandingQtyForTickerWithSpecificOrderTrigger(@Param("symbol")String symbol, @Param("trigger")String trigger);
+    @Query("select sum(order_a.filled) from OrderEntity as order_a where order_a.orderTrigger = :trigger and order_a.symbol = :symbol and order_a.orderAction = 'BUY'")
+    Integer getTotalBuyQtyForTickerWithSpecificOrderTrigger(@Param("symbol")String symbol, @Param("trigger")String trigger);
 
-    @Query("select order from OrderEntity order where (order.filled is null or order.filled < order.quantity) and order.orderStatus <> 'Cancelled' and order.symbol = :symbol and order.orderTrigger = :trigger")
+    @Query("select sum(order_a.filled) from OrderEntity as order_a where order_a.orderTrigger = :trigger and order_a.symbol = :symbol and order_a.orderAction = 'SELL'")
+    Integer getTotalSellQtyForTickerWithSpecificOrderTrigger(@Param("symbol")String symbol, @Param("trigger")String trigger);
+
+    @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled' and o.symbol = :symbol and o.orderTrigger = :trigger")
     List<OrderEntity> findUnFilledOrders(@Param("symbol")String symbol, @Param("trigger")String trigger);
 
     List<OrderEntity> findBySymbolAndOrderStatusNotIn(String symbol, List<String> orderStatuses);

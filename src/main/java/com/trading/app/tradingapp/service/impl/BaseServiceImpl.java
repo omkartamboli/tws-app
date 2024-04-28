@@ -74,6 +74,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     private static final String FILLED_STATUS = "Filled";
 
+    private static final String CANCELLED_STATUS = "Cancelled";
+
     private Map<Integer, ContractDetails> contractDetailsMap = new HashMap<>();
 
     protected static final int MAX_WAIT_COUNT = 50; // 0.5 sec
@@ -414,6 +416,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             orderEntity.setMktCapPrice(mktCapPrice);
             orderEntity.setWhyHeld(whyHeld);
 
+            if(CANCELLED_STATUS.equalsIgnoreCase(status)){
+                LOGGER.info("Order status is CANCELLED");
+            }
             if(FILLED_STATUS.equalsIgnoreCase(status)) {
                 // Set Realized PNL, if any of the child orders are filled completely
                 if (null != orderEntity.getParentOrder()) {

@@ -384,6 +384,15 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    private int findOutstandingQtyForTickerWithSpecificOrderTrigger(String ticker, String orderTrigger) {
+        Integer buyQty = orderRepository.getTotalBuyQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger);
+        Integer sellQty = orderRepository.getTotalSellQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger);
+
+        int buyQtyInt = null == buyQty ? 0 : buyQty;
+        int sellQtyInt = null == sellQty ? 0 : sellQty;
+        return (buyQtyInt - sellQtyInt);
+    }
+
     @Override
     public CreateSetOrderResponseDto createOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger) {
         // LOGGER.info(JsonSerializer.serialize(otStarTradeOrderRequestDto));
@@ -401,7 +410,7 @@ public class OrderServiceImpl implements OrderService {
 
         if (isExitOrder) {
 
-            int outstandingQty = orderRepository.findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger);
+            int outstandingQty = findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger);
 
             if (isLongExitOrder && outstandingQty > 0 || isShortExitOrder && outstandingQty < 0) {
                 // The exit order should make outstanding quantity zero
@@ -1171,6 +1180,7 @@ public class OrderServiceImpl implements OrderService {
         orderEntity.setOptionsOrder(isOptionsOrder);
         orderEntity.setSequenceId(sequenceId);
         orderEntity.setOtsOrderType(otsOrderType);
+        orderEntity.setFilled(0d);
 
         // Set fields for Options order
         if (isOptionsOrder) {
