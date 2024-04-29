@@ -22,7 +22,7 @@ public interface OrderService {
 
     CreateSetOrderResponseDto createOrder(RKLTradeOrderRequestDto rklTradeOrderRequestDto, String orderTrigger);
 
-    CreateSetOrderResponseDto createOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger);
+    CreateSetOrderResponseDto createOTSOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger);
 
     UpdateSetOrderResponseDto updateOrder(UpdateSetOrderRequestDto updateSetOrderRequestDto);
 

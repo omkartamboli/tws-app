@@ -81,12 +81,12 @@ public class OrderController {
 
     @PostMapping("/otstartrade")
     public void CreateOTStarTradeOrder(@RequestBody OtStarTradeOrderRequestDto otStarTradeOrderRequestDto){
-        orderService.createOrder(otStarTradeOrderRequestDto, OT_STAR_ORDER);
+        orderService.createOTSOrder(otStarTradeOrderRequestDto, OT_STAR_ORDER);
     }
 
     @PostMapping("/otstartradeForPostman")
     @ResponseBody
     public CreateSetOrderResponseDto CreateOTStarTradeOrderForPostman(@RequestBody OtStarTradeOrderRequestDto otStarTradeOrderRequestDto){
-        return orderService.createOrder(otStarTradeOrderRequestDto, OT_STAR_ORDER);
+        return orderService.createOTSOrder(otStarTradeOrderRequestDto, OT_STAR_ORDER);
     }
 }

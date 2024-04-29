@@ -136,7 +136,7 @@ public class ApplicationStartupAction implements ApplicationListener<Application
             allConfigEntities.add(new SystemConfigEntity("divergence.order.type", divergenceOrderType));
         }
 
-        getSystemConfigRepository().saveAll(allConfigEntities);
+        getSystemConfigRepository().saveAllAndFlush(allConfigEntities);
 
     }
 

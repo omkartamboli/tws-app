@@ -17,10 +17,13 @@ import com.trading.app.tradingapp.service.SystemConfigService;
 import com.trading.app.tradingapp.util.JsonSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
+import javax.persistence.EntityManager;
+import javax.persistence.PersistenceContext;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -53,6 +56,8 @@ public class OrderServiceImpl implements OrderService {
     private ContractService contractService;
     @Resource
     private SystemConfigService systemConfigService;
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Override
     public CreateSetOrderResponseDto createOrder(CreateSetOrderRequestDto createSetOrderRequestDto, String orderTrigger, String orderTriggerInterval) {
@@ -384,9 +389,9 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private int findOutstandingQtyForTickerWithSpecificOrderTrigger(String ticker, String orderTrigger) {
-        Integer buyQty = orderRepository.getTotalBuyQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger);
-        Integer sellQty = orderRepository.getTotalSellQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger);
+    private int findOutstandingQtyForTickerWithSpecificOrderTrigger(String ticker, String orderTrigger, String interval){
+        Integer buyQty = orderRepository.getTotalBuyQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, interval);
+        Integer sellQty = orderRepository.getTotalSellQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, interval);
 
         int buyQtyInt = null == buyQty ? 0 : buyQty;
         int sellQtyInt = null == sellQty ? 0 : sellQty;
@@ -394,7 +399,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public CreateSetOrderResponseDto createOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger) {
+    public CreateSetOrderResponseDto createOTSOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger) {
         // LOGGER.info(JsonSerializer.serialize(otStarTradeOrderRequestDto));
         // Date start = new Date();
 
@@ -403,21 +408,23 @@ public class OrderServiceImpl implements OrderService {
             return getFailedCreateSetOrderResult(ORDER_TYPE_INVALID_MESSAGE);
         }
 
+        // remove continuous futures suffix (1!) from ticker
         String ticker = otStarTradeOrderRequestDto.getTicker().replace(CME_FUTURES_SUFFIX, EMPTY_STRING);
+
         boolean isLongExitOrder = "LX".equals(otStarTradeOrderRequestDto.getOtsOrderType());
         boolean isShortExitOrder = "SX".equals(otStarTradeOrderRequestDto.getOtsOrderType());
         boolean isExitOrder = isLongExitOrder || isShortExitOrder;
 
         if (isExitOrder) {
 
-            int outstandingQty = findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger);
+            int outstandingQty = findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, otStarTradeOrderRequestDto.getInterval());
 
             if (isLongExitOrder && outstandingQty > 0 || isShortExitOrder && outstandingQty < 0) {
                 // The exit order should make outstanding quantity zero
                 otStarTradeOrderRequestDto.setQuantity(Math.abs(outstandingQty));
 
                 // Once we have set the exit order quantity to outstanding quantity, we want to cancel all unfilled orders to avoid quantity ambiguity
-                List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrders(ticker, orderTrigger);
+                List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrders(ticker, orderTrigger, otStarTradeOrderRequestDto.getInterval());
                 if (!CollectionUtils.isEmpty(unFilledOrderList)) {
                     unFilledOrderList.forEach(orderEntity -> cancelOrder(orderEntity.getOrderId()));
                 }
@@ -426,7 +433,7 @@ public class OrderServiceImpl implements OrderService {
                 }
             } else {
 
-                LOGGER.error(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER + ". Outstanding qty = [{}] \n" + JsonSerializer.serialize(otStarTradeOrderRequestDto), outstandingQty);
+                LOGGER.error(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER + ". \n Outstanding qty = [{}] \n Request json = [{}]",outstandingQty, JsonSerializer.serialize(otStarTradeOrderRequestDto));
                 return getFailedCreateSetOrderResult(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER);
             }
         }
@@ -436,11 +443,24 @@ public class OrderServiceImpl implements OrderService {
             double tradePrice = roundOff(otStarTradeOrderRequestDto.getEntry(), otStarTradeOrderRequestDto.getTicker());
 
             try {
+                double latestLTP = getLtpForTicker(ticker);
                 // Set tradePrice as LTP if latest LTP is available for ticker in DB.
-                tradePrice = getLtpForTicker(ticker);
+                if( ("BUY".equalsIgnoreCase(otStarTradeOrderRequestDto.getOrderType()) && latestLTP > tradePrice) || ("SELL".equalsIgnoreCase(otStarTradeOrderRequestDto.getOrderType()) && latestLTP < tradePrice)) {
+
+
+
+
+                    //tradePrice = latestLTP;
+
+
+
+
+
+                    LOGGER.info("Updating transaction price for order [{}] with latest LTP [{}]", otStarTradeOrderRequestDto.getSequenceId(), latestLTP);
+                }
             } catch (Exception ex) {
-                LOGGER.error(ex.getMessage(), ex);
-                LOGGER.error("LTP could not be used as LTP is not available, using trade price on order to set limit order");
+                //LOGGER.error(ex.getMessage(), ex);
+                LOGGER.error("LTP could not be used as LTP is not available, using trade price on order to set limit order. Exception = [{}]", ex.getMessage());
             }
 
             Contract contract = getBaseService().createContract(ticker);
@@ -466,28 +486,38 @@ public class OrderServiceImpl implements OrderService {
 
             // persisting the order after order is sent to TWS, to avoid delay in sending orders to exchange
             persistOrder(order, contract, orderTrigger, otStarTradeOrderRequestDto.getInterval(), true, otStarTradeOrderRequestDto.getSequenceId(), otStarTradeOrderRequestDto.getOtsOrderType());
+
             // LOGGER.info("OTS-Create Order API execution time is [{}] ms", end.getTime() - start.getTime());
 
             int counter = 0;
-
-            while (counter < 30) {
+            int retryCount = isExitOrder ? 30 : 5;
+            while (counter < retryCount) {
                 try {
+
+                    // Clear entities fetched previously
+                    entityManager.clear();
+
                     OrderEntity orderEntity = getSingleOrderByOrderId(orderId);
                     int filledQty = orderEntity.getFilled() == null ? 0 : orderEntity.getFilled().intValue();
                     if (filledQty == otStarTradeOrderRequestDto.getQuantity()) {
                         if (counter > 0) {
                             LOGGER.info("Filled order in LTP reset retry no [{}]", counter);
                         }
-                        break;
+                        return getSuccessCreateSetOrderResult(List.of(order.orderId()));
                     } else {
-                        double latestLTP = getContractService().getLatestTickerLTP(ticker);
-                        Order updateOrder = updateOrderTransactionPrice(orderEntity, latestLTP);
-                        eClientSocket.placeOrder(updateOrder.orderId(), contract, updateOrder);
-                        LOGGER.info("Updating transaction rice for order [{}] with latest LTP [{}]", updateOrder.orderId(), latestLTP);
+                        double latestLTP = getLtpForTicker(ticker);
+
+                        // Update transaction price only if LTP have moved away from order transaction price unfavourably
+                        if( ("BUY".equalsIgnoreCase(orderEntity.getOrderAction()) && latestLTP > orderEntity.getTransactionPrice()) || ("SELL".equalsIgnoreCase(orderEntity.getOrderAction()) && latestLTP < orderEntity.getTransactionPrice())) {
+                            Order updateOrder = updateOrderTransactionPrice(orderEntity, latestLTP);
+                            eClientSocket.placeOrder(updateOrder.orderId(), contract, updateOrder);
+                            LOGGER.info("Loop: Updating transaction price for order [{}] with latest LTP [{}]", updateOrder.orderId(), latestLTP);
+                        }
                         counter++;
                         Thread.sleep(5000);
                     }
                 } catch (Exception ex) {
+                    LOGGER.warn("Exception while updating order transaction price for order [{}] in counter loop. Exception : [{}]", orderId, ex.getMessage());
                     Thread.sleep(5000);
                     counter++;
                 }
@@ -1211,7 +1241,7 @@ public class OrderServiceImpl implements OrderService {
         if (parentOcaOrder != null) {
             orderEntity.setParentOcaOrder(parentOcaOrder);
         }
-        getOrderRepository().save(orderEntity);
+        getOrderRepository().saveAndFlush(orderEntity);
 
         if (waitForOrdersToBeCreated) {
             try {
@@ -1229,15 +1259,33 @@ public class OrderServiceImpl implements OrderService {
 
 
     private Order updateOrderTransactionPrice(OrderEntity orderEntity, double newTransactionPrice) {
-        LOGGER.info("Updating order with OrderId=[{}], to latest LTP as transaction price=[{}]", orderEntity.getOrderId(), newTransactionPrice);
+        LOGGER.info("Update Order: Updating order with OrderId=[{}], to latest LTP as transaction price=[{}]", orderEntity.getOrderId(), newTransactionPrice);
         Order updateOrder = new Order();
         updateOrder.orderId(orderEntity.getOrderId());
-        updateOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(newTransactionPrice));
+
+        updateOrder.action(orderEntity.getOrderAction());
+        updateOrder.orderType(orderEntity.getOrderType());
+        updateOrder.totalQuantity(orderEntity.getQuantity());
+
+        updateOrder.hidden(true);
+
+        if (OrderType.STP_LMT.getApiString().equalsIgnoreCase(orderEntity.getOrderType())) {
+            updateOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(newTransactionPrice));
+            updateOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(newTransactionPrice));
+        } else if (OrderType.STP.getApiString().equalsIgnoreCase(orderEntity.getOrderType())) {
+            updateOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(newTransactionPrice));
+        } else {
+            updateOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(newTransactionPrice));
+        }
+
+        updateOrder.tif(Types.TimeInForce.GTC);
+        updateOrder.outsideRth(true);
+        updateOrder.account(getTradingAccount());
         updateOrder.transmit(true);
 
         orderEntity.setTransactionPrice(newTransactionPrice);
-        orderEntity.setStatusUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
-        getOrderRepository().save(orderEntity);
+        //orderEntity.setStatusUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
+        getOrderRepository().saveAndFlush(orderEntity);
         return updateOrder;
     }
 
@@ -1286,20 +1334,19 @@ public class OrderServiceImpl implements OrderService {
 
     private void deleteOrderIfExists(OrderEntity orderEntity) {
         if (orderEntity != null && orderEntity.getOrderId() != null) {
-            Optional<OrderEntity> orderToBeDeleted = getOrderRepository().findById(orderEntity.getOrderId());
-            if (orderToBeDeleted.isPresent()) {
+            if (null == orderEntity.getFilled() || orderEntity.getFilled() == 0d) {
                 try {
-                    getOrderRepository().delete(orderToBeDeleted.get());
+                    getOrderRepository().delete(orderEntity);
                 } catch (Exception ex) {
                     LOGGER.warn("Could not delete order with id " + orderEntity.getOrderId());
                 }
             }
-
         }
     }
 
     private Double getLtpForTicker(String ticker) throws Exception {
-
+        // Clear entities fetched previously
+        entityManager.clear();
         List<ContractEntity> contractEntityList = getContractRepository().findBySymbol(ticker.replace(CME_FUTURES_SUFFIX, EMPTY_STRING));
         if (!CollectionUtils.isEmpty(contractEntityList)) {
             ContractEntity contractEntity = contractEntityList.get(0);

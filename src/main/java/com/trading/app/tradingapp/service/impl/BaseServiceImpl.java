@@ -243,7 +243,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     //@Transactional
     public void updateContractEntity(ContractEntity contractEntity) {
-        getContractRepository().save(contractEntity);
+        getContractRepository().saveAndFlush(contractEntity);
     }
 
     @Override
@@ -425,7 +425,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
                     OrderEntity parentOrderEntity = orderEntity.getParentOrder();
                     double fillPriceDiff = ((orderEntity.getAvgFillPrice() - parentOrderEntity.getAvgFillPrice()) * (com.trading.app.tradingapp.dto.OrderType.BUY.toString().equalsIgnoreCase(parentOrderEntity.getOrderAction()) ? 1 : -1));
                     parentOrderEntity.setRealizedPNL(roundOffDoubleForPriceDecimalFormat(fillPriceDiff * orderEntity.getFilled()));
-                    getOrderRepository().save(parentOrderEntity);
+                    getOrderRepository().saveAndFlush(parentOrderEntity);
                 }
 
                 if (previousRemaining != null && previousRemaining > remaining) {
@@ -444,7 +444,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             }
 
             orderEntity.setStatusUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
-            getOrderRepository().save(orderEntity);
+            getOrderRepository().saveAndFlush(orderEntity);
+
         }
     }
 
@@ -631,10 +632,11 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         //LOGGER.info("Got order status for order: [{}]", orderId);
         //LOGGER.info("Data: status:[{}], filled:[{}], remaining:[{}], avgFillPrice:[{}], parent order id:[{}], clientId:[{}], mktCapPrice:[{}], whyHeld:[{}]", status, filled, remaining, avgFillPrice, parentId, clientId, mktCapPrice, whyHeld);
         updateOrderStatus(orderId, status, filled, remaining, avgFillPrice, whyHeld, mktCapPrice);
-        //LOGGER.info("Order status is updated in the database for order: [{}]", orderId);
+        LOGGER.info("Order status is updated in the database for order: [{}]. Status: [{}]", orderId, status);
 
         // If order is Filled
         if (FILLED_STATUS.equalsIgnoreCase(status)) {
+
             getContractService().getTickerSequenceTrackerMap().values().forEach(sequenceTracker -> {
                 if (sequenceTracker.getBuyTpOrderId().equals(orderId)) {
                     sequenceTracker.setBuyTpOrderFilled(true);
