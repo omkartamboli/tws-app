@@ -21,7 +21,7 @@ public class TickerModelDtoPopulator {
             tickerModelDto.setDefaultQuantity(contractEntity.getDefaultQuantity());
             tickerModelDto.setExchange(contractEntity.getExchange());
             tickerModelDto.setLtp(contractEntity.getLtp());
-            tickerModelDto.setLtpTimestamp(contractEntity.getLtpTimestamp());
+            tickerModelDto.setLtpTimestamp(contractEntity.getTickerAskBidLtpValuesUpdateTimestamp());
             tickerModelDto.setSecType(contractEntity.getSecType());
             tickerModelDto.setTickerId(contractEntity.getTickerId());
             tickerModelDto.setCreateSetOrderFormDto(getCreateSetOrderFormDtoPopulator().populate(contractEntity));

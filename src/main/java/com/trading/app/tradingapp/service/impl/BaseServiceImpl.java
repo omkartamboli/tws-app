@@ -218,7 +218,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
             ContractEntity contractEntity = contractEntityOptional.get();
 
-            if (contractEntity.getLtpTimestamp().getTime() > currentTime || contractEntity.getBidTimestamp().getTime() > currentTime || contractEntity.getAskTimestamp().getTime() > currentTime) {
+            if (contractEntity.getTickerAskBidLtpValuesUpdateTimestamp() != null && contractEntity.getTickerAskBidLtpValuesUpdateTimestamp().getTime() > currentTime) {
                 if (contractEntity.getLtp() > 0 || contractEntity.getLastAsk() > 0 || contractEntity.getLastBid() > 0) {
                     marketDataDto.setLtp(contractEntity.getLtp());
                     marketDataDto.setLastAsk(contractEntity.getLastAsk());
@@ -391,11 +391,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             contractEntity.setStep3(0.5d);
             contractEntity.setStep4(1d);
             contractEntity.setStep5(2d);
-            contractEntity.setLtpTimestamp(null);
             contractEntity.setTickerId((int) getContractRepository().count() + 1);
-            contractEntity.setLtpTimestamp(new java.sql.Timestamp(new Date().getTime()));
-            contractEntity.setAskTimestamp(new java.sql.Timestamp(new Date().getTime()));
-            contractEntity.setBidTimestamp(new java.sql.Timestamp(new Date().getTime()));
+            contractEntity.setTickerAskBidLtpValuesUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
             updateContractEntity(contractEntity);
             return contractEntity;
         } else {
@@ -560,7 +557,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             ContractEntity contractEntity = getContractByTickerId(tickerId);
             if (null != contractEntity) {
                 contractEntity.setLtp(price);
-                contractEntity.setLtpTimestamp(new java.sql.Timestamp(new Date().getTime()));
+                contractEntity.setTickerAskBidLtpValuesUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
                 // persist new LTP and timestamp
                 updateContractEntity(contractEntity);
 
@@ -577,29 +574,29 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             }
         }
 
-//        if (field == ASK_FIELD) {
-//            ContractEntity contractEntity = getContractByTickerId(tickerId);
-//            if (null != contractEntity) {
-//                contractEntity.setLastAsk(price);
-//                contractEntity.setAskTimestamp(new java.sql.Timestamp(new Date().getTime()));
-//                // persist new last ask price and timestamp
-//                updateContractEntity(contractEntity);
-//            } else {
-//                LOGGER.warn("Received Last ask price for invalid tickerId {}", tickerId);
-//            }
-//        }
-//
-//        if (field == BID_FIELD) {
-//            ContractEntity contractEntity = getContractByTickerId(tickerId);
-//            if (null != contractEntity) {
-//                contractEntity.setLastBid(price);
-//                contractEntity.setBidTimestamp(new java.sql.Timestamp(new Date().getTime()));
-//                // persist new last bid price and timestamp
-//                updateContractEntity(contractEntity);
-//            } else {
-//                LOGGER.warn("Received Last bid price for invalid tickerId {}", tickerId);
-//            }
-//        }
+        if (field == ASK_FIELD) {
+            ContractEntity contractEntity = getContractByTickerId(tickerId);
+            if (null != contractEntity) {
+                contractEntity.setLastAsk(price);
+                contractEntity.setTickerAskBidLtpValuesUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
+                // persist new last ask price and timestamp
+                updateContractEntity(contractEntity);
+            } else {
+                LOGGER.warn("Received Last ask price for invalid tickerId {}", tickerId);
+            }
+        }
+
+        if (field == BID_FIELD) {
+            ContractEntity contractEntity = getContractByTickerId(tickerId);
+            if (null != contractEntity) {
+                contractEntity.setLastBid(price);
+                contractEntity.setTickerAskBidLtpValuesUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
+                // persist new last bid price and timestamp
+                updateContractEntity(contractEntity);
+            } else {
+                LOGGER.warn("Received Last bid price for invalid tickerId {}", tickerId);
+            }
+        }
     }
 
     @Override

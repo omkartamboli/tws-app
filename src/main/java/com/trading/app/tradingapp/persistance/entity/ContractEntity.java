@@ -32,11 +32,7 @@ public class ContractEntity {
 
     private Double lastBid;
 
-    private Timestamp ltpTimestamp;
-
-    private Timestamp askTimestamp;
-
-    private Timestamp bidTimestamp;
+    private Timestamp tickerAskBidLtpValuesUpdateTimestamp;
 
     private boolean active;
 
@@ -91,14 +87,6 @@ public class ContractEntity {
         this.ltp = ltp;
     }
 
-    public Timestamp getLtpTimestamp() {
-        return ltpTimestamp;
-    }
-
-    public void setLtpTimestamp(Timestamp ltpTimestamp) {
-        this.ltpTimestamp = ltpTimestamp;
-    }
-
     public String getCurrency() {
         return currency;
     }
@@ -137,22 +125,6 @@ public class ContractEntity {
 
     public void setLastBid(Double lastBid) {
         this.lastBid = lastBid;
-    }
-
-    public Timestamp getAskTimestamp() {
-        return askTimestamp;
-    }
-
-    public void setAskTimestamp(Timestamp askTimestamp) {
-        this.askTimestamp = askTimestamp;
-    }
-
-    public Timestamp getBidTimestamp() {
-        return bidTimestamp;
-    }
-
-    public void setBidTimestamp(Timestamp bidTimestamp) {
-        this.bidTimestamp = bidTimestamp;
     }
 
     public double getStep1() {
@@ -233,5 +205,13 @@ public class ContractEntity {
 
     public void setUseOcaHedgeOrder(boolean useOcaHedgeOrder) {
         this.useOcaHedgeOrder = useOcaHedgeOrder;
+    }
+
+    public Timestamp getTickerAskBidLtpValuesUpdateTimestamp() {
+        return tickerAskBidLtpValuesUpdateTimestamp;
+    }
+
+    public void setTickerAskBidLtpValuesUpdateTimestamp(Timestamp tickerAskBidLtpValuesUpdateTimestamp) {
+        this.tickerAskBidLtpValuesUpdateTimestamp = tickerAskBidLtpValuesUpdateTimestamp;
     }
 }

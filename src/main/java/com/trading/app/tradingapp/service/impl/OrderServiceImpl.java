@@ -446,16 +446,7 @@ public class OrderServiceImpl implements OrderService {
                 double latestLTP = getLtpForTicker(ticker);
                 // Set tradePrice as LTP if latest LTP is available for ticker in DB.
                 if( ("BUY".equalsIgnoreCase(otStarTradeOrderRequestDto.getOrderType()) && latestLTP > tradePrice) || ("SELL".equalsIgnoreCase(otStarTradeOrderRequestDto.getOrderType()) && latestLTP < tradePrice)) {
-
-
-
-
-                    //tradePrice = latestLTP;
-
-
-
-
-
+                    tradePrice = latestLTP;
                     LOGGER.info("Updating transaction price for order [{}] with latest LTP [{}]", otStarTradeOrderRequestDto.getSequenceId(), latestLTP);
                 }
             } catch (Exception ex) {
@@ -576,7 +567,7 @@ public class OrderServiceImpl implements OrderService {
             oneMinuteBefore.add(Calendar.MINUTE, -1);
 
             // Check if LTP is modified recently in last 1 minute
-            if (contractEntity.getLtpTimestamp().getTime() > oneMinuteBefore.getTime().getTime()) {
+            if (contractEntity.getTickerAskBidLtpValuesUpdateTimestamp() != null && contractEntity.getTickerAskBidLtpValuesUpdateTimestamp().getTime() > oneMinuteBefore.getTime().getTime()) {
                 double midSL = (entry + sl) / 2;
                 boolean midSLFilter = entry > sl ? contractEntity.getLtp() > midSL : contractEntity.getLtp() < midSL;
 
@@ -1351,7 +1342,7 @@ public class OrderServiceImpl implements OrderService {
         if (!CollectionUtils.isEmpty(contractEntityList)) {
             ContractEntity contractEntity = contractEntityList.get(0);
             if (null != contractEntity && null != contractEntity.getLtp()) {
-                if ((new Date().getTime() - contractEntity.getLtpTimestamp().getTime()) > 5000) {
+                if (contractEntity.getTickerAskBidLtpValuesUpdateTimestamp() == null || (new Date().getTime() - contractEntity.getTickerAskBidLtpValuesUpdateTimestamp().getTime()) > 5000) {
                     throw new Exception("Stale LTP data for contract entity [ " + ticker + " ]");
                 }
                 return contractEntity.getLtp();
