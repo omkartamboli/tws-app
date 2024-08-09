@@ -24,7 +24,8 @@ public interface ContractService {
 
     Map<String, SequenceTracker> getTickerSequenceTrackerMap();
 
-    public Double getLatestTickerLTP(String ticker) throws Exception;
+    Double getLatestTickerLTP(String ticker) throws Exception;
 
+    Double getLatestTickerLTPFromDB(String ticker) throws Exception;
 
 }

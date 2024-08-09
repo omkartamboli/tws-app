@@ -22,6 +22,8 @@ public interface OrderService {
 
     CreateSetOrderResponseDto createOrder(RKLTradeOrderRequestDto rklTradeOrderRequestDto, String orderTrigger);
 
+    CreateSetOrderResponseDto createOTMacdOrder(OTMacdOrderRequestDto otMacdOrderRequestDto, String orderTrigger);
+
     CreateSetOrderResponseDto createOTSOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger);
 
     UpdateSetOrderResponseDto updateOrder(UpdateSetOrderRequestDto updateSetOrderRequestDto);

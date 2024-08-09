@@ -18,6 +18,7 @@ import com.trading.app.tradingapp.util.UpdateSequenceTrackerThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
 import java.util.HashMap;
@@ -387,6 +388,22 @@ public class ContractServiceImpl implements ContractService {
             thread.join();
             return getTickerSequenceTrackerMap().get(ticker).getLtp();
         }
+    }
+
+    @Override
+    public Double getLatestTickerLTPFromDB(String ticker) throws IllegalArgumentException {
+        if(null == ticker || ticker.isEmpty()){
+            throw new IllegalArgumentException("Invalid ticker id for getting LTP");
+        }
+        List<ContractEntity> contractsList = getContractRepository().findBySymbol(ticker);
+        if(null == contractsList || contractsList.isEmpty() || null == contractsList.get(0)){
+            throw new IllegalArgumentException("Invalid ticker id for getting LTP");
+        }
+        ContractEntity contract = contractsList.get(0);
+        if(null == contract.getLtp()){
+            throw new IllegalArgumentException("Invalid LTP value for the ticker");
+        }
+        return contract.getLtp();
     }
 
     public BaseService getBaseService() {

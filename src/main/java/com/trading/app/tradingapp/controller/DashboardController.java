@@ -14,9 +14,8 @@ import com.trading.app.tradingapp.service.OrderService;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.ui.ModelMap;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.RedirectView;
 
 import javax.annotation.Resource;
@@ -71,6 +70,20 @@ public class DashboardController {
         model.addAttribute("activeSymbol", getLastAccessedSymbol(httpSession));
         return "refreshingDashboard";
     }
+
+//    @GetMapping(value="/ajaxLtp/{ticker}")
+//    public String getLTPUsingAjax(ModelMap map, @PathVariable String ticker) {
+//        Double ltpVal = -9999.99;
+//        try{
+//            ltpVal = getContractService().getLatestTickerLTPFromDB(ticker);
+//        } catch (Exception e){
+//            e.printStackTrace();
+//        }
+//        map.addAttribute("ajaxLTP", ltpVal);
+//
+//        // change "myview" to the name of your view
+//        return "dashboard :: #ajaxLTP";
+//    }
 
     @PostMapping("/dashboard/createSetOrder")
     public RedirectView createSetOrder(@ModelAttribute CreateSetOrderRequestDto createSetOrderRequestDto, Model model) {

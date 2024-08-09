@@ -265,7 +265,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public Contract createFuturesContract(String ticker, String lastTradeDateOrContractMonth) {
-        Contract contract =  new FutContract(ticker,"202406");
+        Contract contract =  new FutContract(ticker,"202409");
         contract.exchange("CME");
         return contract;
     }

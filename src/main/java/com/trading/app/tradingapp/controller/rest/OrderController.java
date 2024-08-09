@@ -29,6 +29,8 @@ public class OrderController {
 
     private static final String OT_STAR_ORDER = "Automated Order - OT_STAR_ORDER";
 
+    private static final String OT_MACD_ORDER = "Automated Order - OT_MACD_ORDER";
+
     private static final String RKL_TRADE = "Automated Order - RKL_TRADE";
 
     @PostMapping("/setOrder")
@@ -88,5 +90,15 @@ public class OrderController {
     @ResponseBody
     public CreateSetOrderResponseDto CreateOTStarTradeOrderForPostman(@RequestBody OtStarTradeOrderRequestDto otStarTradeOrderRequestDto){
         return orderService.createOTSOrder(otStarTradeOrderRequestDto, OT_STAR_ORDER);
+    }
+
+    @PostMapping("/otmacdtrade")
+    public void CreateOTMacdTradeOrder(@RequestBody OTMacdOrderRequestDto otMacdOrderRequestDto){
+        orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + otMacdOrderRequestDto.getInterval() + "MIN" + "_" + otMacdOrderRequestDto.getTradeStartSequenceId());
+    }
+
+    @PostMapping("/otmacdtradeForPostman")
+    public CreateSetOrderResponseDto CreateOTMacdTradeOrderForPostman(@RequestBody OTMacdOrderRequestDto otMacdOrderRequestDto){
+        return orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + otMacdOrderRequestDto.getInterval() + "MIN" + "_" + otMacdOrderRequestDto.getTradeStartSequenceId());
     }
 }

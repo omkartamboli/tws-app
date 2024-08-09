@@ -74,8 +74,6 @@ public class OrderServiceImpl implements OrderService {
                     bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 10);
                 } else {
                     bracketOrders = createBracketOrderWithTPSLWithSLCover(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
-                    //bracketOrders = createBracketOrderWithTPSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval);
-                    //bracketOrders = createBracketOrderWithTPWithOCAHedge(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTargetPrice(), createSetOrderRequestDto.getStopLossPrice(), contract, orderTrigger, orderTriggerInterval, 1);
                 }
             } else if (null != createSetOrderRequestDto.getTrailingStopLossAmount()) {
                 bracketOrders = createBracketOrderWithTrailingSL(getBaseService().getNextOrderId(), createSetOrderRequestDto.getOrderType().toString(), createSetOrderRequestDto.getQuantity(), createSetOrderRequestDto.getTransactionPrice(), createSetOrderRequestDto.getTrailingStopLossAmount(), contract, orderTrigger, orderTriggerInterval);
@@ -399,6 +397,129 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public CreateSetOrderResponseDto createOTMacdOrder(OTMacdOrderRequestDto otMacdOrderRequestDto, String orderTrigger) {
+        // Date start = new Date();
+
+        if (!"BUY".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType()) && !"SELL".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType())) {
+            LOGGER.error(ORDER_TYPE_INVALID_MESSAGE);
+            return getFailedCreateSetOrderResult(ORDER_TYPE_INVALID_MESSAGE);
+        }
+
+        String ticker = otMacdOrderRequestDto.getTicker().replace(CME_FUTURES_SUFFIX, EMPTY_STRING);
+
+        boolean isExitOrder = null != otMacdOrderRequestDto.getCurrentSequenceId() && otMacdOrderRequestDto.getCurrentSequenceId() == -1;
+//        boolean isLongExitOrder = isExitOrder && "SELL".equalsIgnoreCase(otMacdOrderRequestDto.getOtsOrderType());
+//        boolean isShortExitOrder = isExitOrder && "BUY".equalsIgnoreCase(otMacdOrderRequestDto.getOtsOrderType());
+
+        Double outstandingQty = (double) Math.abs(findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, otMacdOrderRequestDto.getInterval()));
+
+        if (isExitOrder) {
+            if (outstandingQty <= 0) {
+                // The exit order should make outstanding quantity zero
+                otMacdOrderRequestDto.setQuantity(Math.abs(outstandingQty.intValue()));
+
+                // Once we have set the exit order quantity to outstanding quantity, we want to cancel all unfilled orders to avoid quantity ambiguity
+                List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrders(ticker, orderTrigger, otMacdOrderRequestDto.getInterval());
+                if (!CollectionUtils.isEmpty(unFilledOrderList)) {
+                    unFilledOrderList.forEach(orderEntity -> cancelOrder(orderEntity.getOrderId()));
+                }
+            } else {
+                LOGGER.error(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER + ". \n Outstanding qty = [{}] \n Request json = [{}]",outstandingQty, JsonSerializer.serialize(otMacdOrderRequestDto));
+                return getFailedCreateSetOrderResult(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER);
+            }
+        }
+
+        try {
+            boolean enableOrth = !otMacdOrderRequestDto.getTicker().contains(CME_FUTURES_SUFFIX);
+            double tradePrice = roundOff(otMacdOrderRequestDto.getEntry(), otMacdOrderRequestDto.getTicker());
+
+            try {
+                double latestLTP = getLtpForTicker(ticker);
+                // Set tradePrice as LTP if latest LTP is available for ticker in DB.
+                if( ("BUY".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType()) && latestLTP > tradePrice) || ("SELL".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType()) && latestLTP < tradePrice)) {
+                    tradePrice = latestLTP;
+                    LOGGER.info("Updating transaction price for order [{}] with latest LTP [{}]", otMacdOrderRequestDto.getSequenceId(), latestLTP);
+                }
+            } catch (Exception ex) {
+                //LOGGER.error(ex.getMessage(), ex);
+                LOGGER.error("LTP could not be used as LTP is not available, using trade price on order to set limit order. Exception = [{}]", ex.getMessage());
+            }
+
+            Contract contract = getBaseService().createContract(ticker);
+            int quantity = otMacdOrderRequestDto.getQuantity();
+            EClientSocket eClientSocket = getBaseService().getConnection();
+
+            List<Order> orderList;
+            int orderId = -1;
+
+            // Synchronizing the order creation block to avoid creating orders with duplicate order ID
+            synchronized (this) {
+                try {
+                    orderList = createMacdOrders(getBaseService().getNextOrderId(), otMacdOrderRequestDto.getOrderType(), quantity, otMacdOrderRequestDto.getSlQuantity(), outstandingQty, tradePrice, otMacdOrderRequestDto.getSlForAvg(), enableOrth, otMacdOrderRequestDto.getTradeStartSequenceId(), otMacdOrderRequestDto.getCurrentSequenceId());
+                    if(!CollectionUtils.isEmpty(orderList)) {
+                        orderList.forEach(order -> {
+                            LOGGER.info("Placing order with id [{}]", order.orderId());
+                            eClientSocket.placeOrder(order.orderId(), contract, order);
+                        });
+                    }
+                } catch (Exception ex) {
+                    LOGGER.error("Could not place a OT-MACD order with order id = [{}].", orderId, ex);
+                    return getFailedCreateSetOrderResult(ex);
+                }
+            }
+
+            // Date end = new Date();
+
+            // persisting the order after order is sent to TWS, to avoid delay in sending orders to exchange
+            if(!orderList.isEmpty()) {
+                persistMacdOrder(orderList.get(0), contract, orderTrigger, otMacdOrderRequestDto.getInterval(), false, null, null, null, otMacdOrderRequestDto.getSequenceId(), otMacdOrderRequestDto.getOtsOrderType(), otMacdOrderRequestDto.getTradeStartSequenceId(), null);
+                if(orderList.size() > 1) {
+                    persistMacdOrder(orderList.get(1), contract, orderTrigger, otMacdOrderRequestDto.getInterval(), false, null, null, null, otMacdOrderRequestDto.getTradeStartSequenceId().toString(), otMacdOrderRequestDto.getOtsOrderType(), otMacdOrderRequestDto.getTradeStartSequenceId(), otMacdOrderRequestDto.getTradeStartSequenceId());
+                }
+            }
+
+            // LOGGER.info("OTS-Create Order API execution time is [{}] ms", end.getTime() - start.getTime());
+//            int counter = 0;
+//            int retryCount = isExitOrder ? 30 : 5;
+//            while (counter < retryCount) {
+//                try {
+//
+//                    // Clear entities fetched previously
+//                    entityManager.clear();
+//
+//                    OrderEntity orderEntity = getSingleOrderByOrderId(orderId);
+//                    int filledQty = orderEntity.getFilled() == null ? 0 : orderEntity.getFilled().intValue();
+//                    if (filledQty == otMacdOrderRequestDto.getQuantity()) {
+//                        if (counter > 0) {
+//                            LOGGER.info("Filled order in LTP reset retry no [{}]", counter);
+//                        }
+//                        return getSuccessCreateSetOrderResult(orderList.stream().map(Order::orderId).collect(Collectors.toList()));
+//                    } else {
+//                        double latestLTP = getLtpForTicker(ticker);
+//
+//                        // Update transaction price only if LTP have moved away from order transaction price unfavourably
+//                        if( ("BUY".equalsIgnoreCase(orderEntity.getOrderAction()) && latestLTP > orderEntity.getTransactionPrice()) || ("SELL".equalsIgnoreCase(orderEntity.getOrderAction()) && latestLTP < orderEntity.getTransactionPrice())) {
+//                            Order updateOrder = updateOrderTransactionPrice(orderEntity, latestLTP);
+//                            eClientSocket.placeOrder(updateOrder.orderId(), contract, updateOrder);
+//                            LOGGER.info("Loop: Updating transaction price for order [{}] with latest LTP [{}]", updateOrder.orderId(), latestLTP);
+//                        }
+//                        counter++;
+//                        Thread.sleep(5000);
+//                    }
+//                } catch (Exception ex) {
+//                    LOGGER.warn("Exception while updating order transaction price for order [{}] in counter loop. Exception : [{}]", orderId, ex.getMessage());
+//                    Thread.sleep(5000);
+//                    counter++;
+//                }
+//            }
+            return getSuccessCreateSetOrderResult(orderList.stream().map(Order::orderId).collect(Collectors.toList()));
+        } catch (Exception ex) {
+            LOGGER.error("Could not place a OT-MACD order.", ex);
+            return getFailedCreateSetOrderResult(ex);
+        }
+    }
+
+    @Override
     public CreateSetOrderResponseDto createOTSOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger) {
         // LOGGER.info(JsonSerializer.serialize(otStarTradeOrderRequestDto));
         // Date start = new Date();
@@ -524,6 +645,14 @@ public class OrderServiceImpl implements OrderService {
         List<OrderEntity> orderEntityList = getOrderRepository().findByOrderId(orderId);
         if (CollectionUtils.isEmpty(orderEntityList)) {
             throw new Exception();
+        }
+        return orderEntityList.get(0);
+    }
+
+    private OrderEntity getSingleOrderBySlCheckSequenceId(Long slCheckSequenceId) {
+        List<OrderEntity> orderEntityList = getOrderRepository().findBySlCheckSequenceId(slCheckSequenceId);
+        if (CollectionUtils.isEmpty(orderEntityList)) {
+            return null;
         }
         return orderEntityList.get(0);
     }
@@ -1124,6 +1253,55 @@ public class OrderServiceImpl implements OrderService {
         return bracketOrder;
     }
 
+    private List<Order> createMacdOrders(int orderId, String action, double quantity, Double slQuantity, Double outstandingQty, double tradePrice, double slPrice, boolean enableOrth, Long tradeStartSequenceId, Long currentSequenceId) throws Exception{
+        List<Order> bracketOrderList = new ArrayList<>();
+
+        // LOGGER.info("Creating single order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], interval=[{}]", orderTrigger, orderId, action, quantity, limitPrice, orderTriggerInterval);
+        //This will be our main or "parent" order
+        Order order = new Order();
+        order.orderId(orderId);
+        order.action(action.toUpperCase());
+        order.orderType(com.ib.client.OrderType.LMT);
+        order.hidden(true);
+        order.totalQuantity(quantity);
+        order.lmtPrice(tradePrice);
+        order.tif(Types.TimeInForce.GTC);
+        if (enableOrth) {
+            order.outsideRth(true);
+        }
+        order.account(DEFAULT_TRADING_ACCOUNT_NUMBER);
+        order.transmit(true);
+        bracketOrderList.add(order);
+
+        Order slOrder;
+        OrderEntity slOrderEntity = getSingleOrderBySlCheckSequenceId(tradeStartSequenceId);
+        if(currentSequenceId != null) {
+            if(currentSequenceId == -1) {
+                if(null != slOrderEntity){
+                    cancelOrder(slOrderEntity.getOrderId());
+                }
+            } else {
+                slOrder = new Order();
+                slOrder.orderId(slOrderEntity == null ? getBaseService().getNextOrderId() : slOrderEntity.getOrderId());
+                slOrder.action("BUY".equalsIgnoreCase(action) ? "SELL" : "BUY");
+                slOrder.orderType(OrderType.STP_LMT); //////// *******
+                slOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(slPrice));
+                slOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(slPrice));
+                slOrder.tif(Types.TimeInForce.GTC);
+                slOrder.outsideRth(enableOrth);
+                slOrder.hidden(true);
+                slOrder.totalQuantity(outstandingQty == null ? slQuantity : outstandingQty);
+                slOrder.account(DEFAULT_TRADING_ACCOUNT_NUMBER);
+                slOrder.transmit(true);
+                bracketOrderList.add(slOrder);
+                if(!slQuantity.equals(outstandingQty)){
+                    LOGGER.error("Outstanding Qty [{}] does not match with SL Quantity [{}]. Using Outstanding quantity for SL order", outstandingQty, slQuantity);
+                }
+                LOGGER.info("Created SL order with id [{}]", slOrder.orderId());
+            }
+        }
+        return bracketOrderList;
+    }
 
     private Order createSingleOrder(int orderId, String action, double quantity, double tradePrice, boolean enableOrth) {
 
@@ -1181,7 +1359,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
-    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType) {
+    private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean isOptionsOrder, Double optionStrikePrice, String optionExpiryDate, String optionType, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType, Long tradeStartSequenceId, Long slCheckSequenceId) {
         OrderEntity orderEntity = new OrderEntity();
         orderEntity.setOrderId(order.orderId());
         orderEntity.setSymbol(contract.symbol());
@@ -1202,6 +1380,8 @@ public class OrderServiceImpl implements OrderService {
         orderEntity.setSequenceId(sequenceId);
         orderEntity.setOtsOrderType(otsOrderType);
         orderEntity.setFilled(0d);
+        orderEntity.setTradeStartSequenceId(tradeStartSequenceId);
+        orderEntity.setSlCheckSequenceId(slCheckSequenceId);
 
         // Set fields for Options order
         if (isOptionsOrder) {
@@ -1292,9 +1472,17 @@ public class OrderServiceImpl implements OrderService {
 
     private OrderEntity persistOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType) {
         if (BaseServiceImpl.OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType())) {
-            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated, null, null, null, sequenceId, otsOrderType);
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated, null, null, null, sequenceId, otsOrderType, null, null);
         } else {
-            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated, ocaOrders, parentOcaOrder, hedgeQtyMultiplier, sequenceId, otsOrderType);
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated, ocaOrders, parentOcaOrder, hedgeQtyMultiplier, sequenceId, otsOrderType, null, null);
+        }
+    }
+
+    private OrderEntity persistMacdOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType, Long tradeStartSequenceId, Long slCheckSequenceId) {
+        if (BaseServiceImpl.OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType())) {
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated, null, null, null, sequenceId, otsOrderType, tradeStartSequenceId, slCheckSequenceId);
+        } else {
+            return persistOrder(order, contract, orderTrigger, orderTriggerInterval, false, null, null, null, waitForOrdersToBeCreated, ocaOrders, parentOcaOrder, hedgeQtyMultiplier, sequenceId, otsOrderType, tradeStartSequenceId, slCheckSequenceId);
         }
     }
 

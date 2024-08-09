@@ -88,6 +88,10 @@ public class OrderEntity {
 
     private Integer ocaHedgeMultiplier;
 
+    private Long tradeStartSequenceId;
+
+    private Long slCheckSequenceId;
+
     @OneToMany(targetEntity=OrderEntity.class, mappedBy="parentOcaOrder", fetch=FetchType.EAGER)
     @ElementCollection
     private List<OrderEntity> ocaOrders;
@@ -370,5 +374,21 @@ public class OrderEntity {
 
     public void setOtsOrderType(String otsOrderType) {
         this.otsOrderType = otsOrderType;
+    }
+
+    public Long getTradeStartSequenceId() {
+        return tradeStartSequenceId;
+    }
+
+    public void setTradeStartSequenceId(Long tradeStartSequenceId) {
+        this.tradeStartSequenceId = tradeStartSequenceId;
+    }
+
+    public Long getSlCheckSequenceId() {
+        return slCheckSequenceId;
+    }
+
+    public void setSlCheckSequenceId(Long slCheckSequenceId) {
+        this.slCheckSequenceId = slCheckSequenceId;
     }
 }
