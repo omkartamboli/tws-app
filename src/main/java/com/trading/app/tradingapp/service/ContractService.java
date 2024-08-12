@@ -12,19 +12,19 @@ public interface ContractService {
 
     void createContractEntity(String ticker);
 
-    void startBuySequence(String ticker, Double tpMargin, Integer quantity);
-
-    void stopBuySequence(String tickerSymbol);
-
-    void startSellSequence(String ticker, Double tpMargin, Integer quantity);
-
-    void stopSellSequence(String tickerSymbol);
+//    void startBuySequence(String ticker, Double tpMargin, Integer quantity);
+//
+//    void stopBuySequence(String tickerSymbol);
+//
+//    void startSellSequence(String ticker, Double tpMargin, Integer quantity);
+//
+//    void stopSellSequence(String tickerSymbol);
 
     void startMarketDataFeed(EClientSocket connection);
 
-    Map<String, SequenceTracker> getTickerSequenceTrackerMap();
+    //Map<String, SequenceTracker> getTickerSequenceTrackerMap();
 
-    Double getLatestTickerLTP(String ticker) throws Exception;
+    //Double getLatestTickerLTP(String ticker) throws Exception;
 
     Double getLatestTickerLTPFromDB(String ticker) throws Exception;
 

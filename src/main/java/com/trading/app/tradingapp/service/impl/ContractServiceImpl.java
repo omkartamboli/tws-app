@@ -37,7 +37,7 @@ public class ContractServiceImpl implements ContractService {
     @Resource
     private ContractRepository contractRepository;
 
-    private Map<String, SequenceTracker> tickerSequenceTrackerMap = new HashMap<>();
+    //private Map<String, SequenceTracker> tickerSequenceTrackerMap = new HashMap<>();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ContractServiceImpl.class);
 
@@ -66,192 +66,192 @@ public class ContractServiceImpl implements ContractService {
         }
     }
 
-    @Override
-    public void startBuySequence(String ticker, Double tpMargin, Integer quantity) {
-
-        SequenceTracker sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
-
-        if(sequenceTracker != null && sequenceTracker.isBuyRunEnable()){
-            LOGGER.info("Buy sequence already running for ticker [{}]", ticker);
-            return;
-        }
-
-        try {
-            // initiate ticker sequence tracker for BUY
-            addUpdateTickerSequenceTracker(ticker, tpMargin, OrderType.BUY);
-
-            Contract contract = getBaseService().createContract(ticker);
-
-            // start market data stream for the ticker
-            getBaseService().startMarketDataStreamForContract(contract);
-
-            // Wait for half second for data stream to initiate
-            Thread.sleep(500);
-
-            sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
-
-            LOGGER.info("Started buy sequence for ticker [{}]", ticker);
-
-            while (sequenceTracker.isBuyRunEnable()) {
-
-                // Existing buy order is not filled yet, so don't place next order
-                if (!sequenceTracker.isBuyTpOrderFilled()) {
-                    Thread.sleep(500);
-                    continue;
-                }
-
-                // If latest LTP is updated by Base service in this map use it, else get latest updated LTP using thread
-                Double tickerLtp = getLatestTickerLTP(ticker);
-
-                // If ticker just initiated
-                if (sequenceTracker.getNextBuyValue() == 0.0d && sequenceTracker.getLastBuyValue() == 0.0d) {
-                    sequenceTracker.setNextBuyValue(tickerLtp);
-                    sequenceTracker.setLastBuyValue(tickerLtp);
-                }
-                // Else if LTP is lower than last buy value so trend could be reversing. no trade.
-                else if (sequenceTracker.getLastBuyValue() > tickerLtp) {
-                    Thread.sleep(500);
-                    continue;
-                }
-
-                // Else if LTP is higher than LBV but lower than NBV, then use same trade values as last trade
-                else if (tickerLtp >= sequenceTracker.getLastBuyValue() && tickerLtp < sequenceTracker.getNextBuyValue()) {
-                    sequenceTracker.setNextBuyValue(sequenceTracker.getLastBuyValue());
-                }
-
-                // if LTP is higher than NBV and less than NBV + Margin 1, then keep NBV as is
-                else if (tickerLtp >= sequenceTracker.getNextBuyValue() && tickerLtp < sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin1()) {
-                    // do nothing as NBV is already set
-                }
-
-                // if LTP is higher than NBV + Margin 1 and less than NBV + Margin 2, then keep NBV as NBV + Margin 1
-                else if (tickerLtp >= sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin1() && tickerLtp < sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin2()) {
-                    sequenceTracker.setNextBuyValue(sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin1());
-                }
-
-                // If LTP had moved a lot ahead, set LTP as next buy value
-                else if (tickerLtp >= sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin2()) {
-                    sequenceTracker.setNextBuyValue(tickerLtp);
-                }
-
-                // else do noting, no trade
-                else {
-                    continue;
-                }
-
-                // Place the order with derived values
-                createOrderWithNextValue(sequenceTracker, OrderType.BUY, ticker, sequenceTracker.getNextBuyValue(), quantity);
-            }
-
-        } catch (Exception ex) {
-            LOGGER.error("Could not start buy sequence for ticker [{}]. Exception: [{}]", ticker, ex);
-        }
-
-    }
-
-    @Override
-    public void stopBuySequence(String tickerSymbol) {
-        if (getTickerSequenceTrackerMap() != null && getTickerSequenceTrackerMap().get(tickerSymbol) != null) {
-            getTickerSequenceTrackerMap().get(tickerSymbol).setBuyRunEnable(false);
-            LOGGER.info("Stopped buy sequence for ticker [{}]", tickerSymbol);
-        } else {
-            LOGGER.error("Could not stop buy sequence for ticker [{}]. Ticker sequence does not exist.", tickerSymbol);
-        }
-
-    }
-
-    @Override
-    public void startSellSequence(String ticker, Double tpMargin, Integer quantity) {
-        SequenceTracker sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
-
-        if(sequenceTracker != null && sequenceTracker.isSellRunEnable()){
-            LOGGER.info("Sell sequence already running for ticker [{}]", ticker);
-            return;
-        }
-
-        try {
-            // initiate ticker sequence tracker for Sell
-            addUpdateTickerSequenceTracker(ticker, tpMargin, OrderType.SELL);
-
-            Contract contract = getBaseService().createContract(ticker);
-
-            // start market data stream for the ticker
-            getBaseService().startMarketDataStreamForContract(contract);
-
-            // Wait for half second for data stream to initiate
-            Thread.sleep(500);
-
-            sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
-
-            LOGGER.info("Started sell sequence for ticker [{}]", ticker);
-
-            while (sequenceTracker.isSellRunEnable()) {
-
-                // Existing sell order is not filled yet, so don't place next order
-                if (!sequenceTracker.isSellTpOrderFilled()) {
-                    Thread.sleep(500);
-                    continue;
-                }
-
-                // If latest LTP is updated by Base service in this map use it, else get latest updated LTP using thread
-                Double tickerLtp = getLatestTickerLTP(ticker);
-
-                // If ticker just initiated
-                if (sequenceTracker.getNextSellValue() == 0.0d && sequenceTracker.getLastSellValue() == 0.0d) {
-                    sequenceTracker.setNextSellValue(tickerLtp);
-                    sequenceTracker.setLastSellValue(tickerLtp);
-                }
-                // Else if LTP is higher than last sell value so trend could be reversing. no trade.
-                else if (sequenceTracker.getLastSellValue() < tickerLtp) {
-                    Thread.sleep(500);
-                    continue;
-                }
-
-                // Else if LTP is lower than LSV but higher than NSV, then use same trade values as last trade
-                else if (tickerLtp <= sequenceTracker.getLastSellValue() && tickerLtp > sequenceTracker.getNextSellValue()) {
-                    sequenceTracker.setNextSellValue(sequenceTracker.getLastSellValue());
-                }
-
-                // if LTP is lower than NSV and higher than (NSV + Margin 1), then keep NSV as is
-                else if (tickerLtp <= sequenceTracker.getNextSellValue() && tickerLtp > (sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin1())) {
-                    // do nothing as NSV is already set
-                }
-
-                // if LTP is lower than (NSV + Margin 1) and higher than (NSV + Margin 2), then keep NSV as (NSV + Margin 1)
-                else if (tickerLtp <= (sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin1()) && tickerLtp > (sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin2())) {
-                    sequenceTracker.setNextSellValue(sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin1());
-                }
-
-                // If LTP had moved a lot below, set LTP as next sell value
-                else if (tickerLtp <= sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin2()) {
-                    sequenceTracker.setNextSellValue(tickerLtp);
-                }
-
-                // else do noting, no trade
-                else {
-                    continue;
-                }
-
-                // Place the order with derived values
-                createOrderWithNextValue(sequenceTracker, OrderType.SELL, ticker, sequenceTracker.getNextSellValue(), quantity);
-            }
-
-        } catch (Exception ex) {
-            LOGGER.error("Could not start sell sequence for ticker [{}]. Exception: [{}]", ticker, ex);
-        }
-
-    }
-
-    @Override
-    public void stopSellSequence(String tickerSymbol) {
-
-        if (getTickerSequenceTrackerMap() != null && getTickerSequenceTrackerMap().get(tickerSymbol) != null) {
-            getTickerSequenceTrackerMap().get(tickerSymbol).setSellRunEnable(false);
-            LOGGER.info("Stopped buy sequence for ticker [{}]", tickerSymbol);
-        } else {
-            LOGGER.error("Could not stop buy sequence for ticker [{}]. Ticker sequence does not exist.", tickerSymbol);
-        }
-    }
+//    @Override
+//    public void startBuySequence(String ticker, Double tpMargin, Integer quantity) {
+//
+//        SequenceTracker sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
+//
+//        if(sequenceTracker != null && sequenceTracker.isBuyRunEnable()){
+//            LOGGER.info("Buy sequence already running for ticker [{}]", ticker);
+//            return;
+//        }
+//
+//        try {
+//            // initiate ticker sequence tracker for BUY
+//            addUpdateTickerSequenceTracker(ticker, tpMargin, OrderType.BUY);
+//
+//            Contract contract = getBaseService().createContract(ticker);
+//
+//            // start market data stream for the ticker
+//            getBaseService().startMarketDataStreamForContract(contract);
+//
+//            // Wait for half second for data stream to initiate
+//            Thread.sleep(500);
+//
+//            sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
+//
+//            LOGGER.info("Started buy sequence for ticker [{}]", ticker);
+//
+//            while (sequenceTracker.isBuyRunEnable()) {
+//
+//                // Existing buy order is not filled yet, so don't place next order
+//                if (!sequenceTracker.isBuyTpOrderFilled()) {
+//                    Thread.sleep(500);
+//                    continue;
+//                }
+//
+//                // If latest LTP is updated by Base service in this map use it, else get latest updated LTP using thread
+//                Double tickerLtp = getLatestTickerLTP(ticker);
+//
+//                // If ticker just initiated
+//                if (sequenceTracker.getNextBuyValue() == 0.0d && sequenceTracker.getLastBuyValue() == 0.0d) {
+//                    sequenceTracker.setNextBuyValue(tickerLtp);
+//                    sequenceTracker.setLastBuyValue(tickerLtp);
+//                }
+//                // Else if LTP is lower than last buy value so trend could be reversing. no trade.
+//                else if (sequenceTracker.getLastBuyValue() > tickerLtp) {
+//                    Thread.sleep(500);
+//                    continue;
+//                }
+//
+//                // Else if LTP is higher than LBV but lower than NBV, then use same trade values as last trade
+//                else if (tickerLtp >= sequenceTracker.getLastBuyValue() && tickerLtp < sequenceTracker.getNextBuyValue()) {
+//                    sequenceTracker.setNextBuyValue(sequenceTracker.getLastBuyValue());
+//                }
+//
+//                // if LTP is higher than NBV and less than NBV + Margin 1, then keep NBV as is
+//                else if (tickerLtp >= sequenceTracker.getNextBuyValue() && tickerLtp < sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin1()) {
+//                    // do nothing as NBV is already set
+//                }
+//
+//                // if LTP is higher than NBV + Margin 1 and less than NBV + Margin 2, then keep NBV as NBV + Margin 1
+//                else if (tickerLtp >= sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin1() && tickerLtp < sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin2()) {
+//                    sequenceTracker.setNextBuyValue(sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin1());
+//                }
+//
+//                // If LTP had moved a lot ahead, set LTP as next buy value
+//                else if (tickerLtp >= sequenceTracker.getNextBuyValue() + sequenceTracker.getBuyMargin2()) {
+//                    sequenceTracker.setNextBuyValue(tickerLtp);
+//                }
+//
+//                // else do noting, no trade
+//                else {
+//                    continue;
+//                }
+//
+//                // Place the order with derived values
+//                createOrderWithNextValue(sequenceTracker, OrderType.BUY, ticker, sequenceTracker.getNextBuyValue(), quantity);
+//            }
+//
+//        } catch (Exception ex) {
+//            LOGGER.error("Could not start buy sequence for ticker [{}]. Exception: [{}]", ticker, ex);
+//        }
+//
+//    }
+//
+//    @Override
+//    public void stopBuySequence(String tickerSymbol) {
+//        if (getTickerSequenceTrackerMap() != null && getTickerSequenceTrackerMap().get(tickerSymbol) != null) {
+//            getTickerSequenceTrackerMap().get(tickerSymbol).setBuyRunEnable(false);
+//            LOGGER.info("Stopped buy sequence for ticker [{}]", tickerSymbol);
+//        } else {
+//            LOGGER.error("Could not stop buy sequence for ticker [{}]. Ticker sequence does not exist.", tickerSymbol);
+//        }
+//
+//    }
+//
+//    @Override
+//    public void startSellSequence(String ticker, Double tpMargin, Integer quantity) {
+//        SequenceTracker sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
+//
+//        if(sequenceTracker != null && sequenceTracker.isSellRunEnable()){
+//            LOGGER.info("Sell sequence already running for ticker [{}]", ticker);
+//            return;
+//        }
+//
+//        try {
+//            // initiate ticker sequence tracker for Sell
+//            addUpdateTickerSequenceTracker(ticker, tpMargin, OrderType.SELL);
+//
+//            Contract contract = getBaseService().createContract(ticker);
+//
+//            // start market data stream for the ticker
+//            getBaseService().startMarketDataStreamForContract(contract);
+//
+//            // Wait for half second for data stream to initiate
+//            Thread.sleep(500);
+//
+//            sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
+//
+//            LOGGER.info("Started sell sequence for ticker [{}]", ticker);
+//
+//            while (sequenceTracker.isSellRunEnable()) {
+//
+//                // Existing sell order is not filled yet, so don't place next order
+//                if (!sequenceTracker.isSellTpOrderFilled()) {
+//                    Thread.sleep(500);
+//                    continue;
+//                }
+//
+//                // If latest LTP is updated by Base service in this map use it, else get latest updated LTP using thread
+//                Double tickerLtp = getLatestTickerLTP(ticker);
+//
+//                // If ticker just initiated
+//                if (sequenceTracker.getNextSellValue() == 0.0d && sequenceTracker.getLastSellValue() == 0.0d) {
+//                    sequenceTracker.setNextSellValue(tickerLtp);
+//                    sequenceTracker.setLastSellValue(tickerLtp);
+//                }
+//                // Else if LTP is higher than last sell value so trend could be reversing. no trade.
+//                else if (sequenceTracker.getLastSellValue() < tickerLtp) {
+//                    Thread.sleep(500);
+//                    continue;
+//                }
+//
+//                // Else if LTP is lower than LSV but higher than NSV, then use same trade values as last trade
+//                else if (tickerLtp <= sequenceTracker.getLastSellValue() && tickerLtp > sequenceTracker.getNextSellValue()) {
+//                    sequenceTracker.setNextSellValue(sequenceTracker.getLastSellValue());
+//                }
+//
+//                // if LTP is lower than NSV and higher than (NSV + Margin 1), then keep NSV as is
+//                else if (tickerLtp <= sequenceTracker.getNextSellValue() && tickerLtp > (sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin1())) {
+//                    // do nothing as NSV is already set
+//                }
+//
+//                // if LTP is lower than (NSV + Margin 1) and higher than (NSV + Margin 2), then keep NSV as (NSV + Margin 1)
+//                else if (tickerLtp <= (sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin1()) && tickerLtp > (sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin2())) {
+//                    sequenceTracker.setNextSellValue(sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin1());
+//                }
+//
+//                // If LTP had moved a lot below, set LTP as next sell value
+//                else if (tickerLtp <= sequenceTracker.getNextSellValue() - sequenceTracker.getSellMargin2()) {
+//                    sequenceTracker.setNextSellValue(tickerLtp);
+//                }
+//
+//                // else do noting, no trade
+//                else {
+//                    continue;
+//                }
+//
+//                // Place the order with derived values
+//                createOrderWithNextValue(sequenceTracker, OrderType.SELL, ticker, sequenceTracker.getNextSellValue(), quantity);
+//            }
+//
+//        } catch (Exception ex) {
+//            LOGGER.error("Could not start sell sequence for ticker [{}]. Exception: [{}]", ticker, ex);
+//        }
+//
+//    }
+//
+//    @Override
+//    public void stopSellSequence(String tickerSymbol) {
+//
+//        if (getTickerSequenceTrackerMap() != null && getTickerSequenceTrackerMap().get(tickerSymbol) != null) {
+//            getTickerSequenceTrackerMap().get(tickerSymbol).setSellRunEnable(false);
+//            LOGGER.info("Stopped buy sequence for ticker [{}]", tickerSymbol);
+//        } else {
+//            LOGGER.error("Could not stop buy sequence for ticker [{}]. Ticker sequence does not exist.", tickerSymbol);
+//        }
+//    }
 
     @Override
     public void startMarketDataFeed(final EClientSocket connection) {
@@ -284,35 +284,35 @@ public class ContractServiceImpl implements ContractService {
         }
     }
 
-    private void addUpdateTickerSequenceTracker(String ticker, Double tpMargin, OrderType orderType) {
-
-        SequenceTracker sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
-        if (sequenceTracker == null) {
-            sequenceTracker = new SequenceTracker();
-        }
-
-        if (OrderType.BUY.equals(orderType)) {
-            sequenceTracker.setBuyRunEnable(true);
-            sequenceTracker.setLastBuyValue(0.0d);
-            sequenceTracker.setNextBuyValue(0.0d);
-            sequenceTracker.setTpBuyMargin(tpMargin);
-            sequenceTracker.setBuyMargin1(tpMargin / 4.0d);
-            sequenceTracker.setBuyMargin2(tpMargin / 2.0d);
-            sequenceTracker.setBuyTpOrderFilled(true);
-        } else if (OrderType.SELL.equals(orderType)) {
-            sequenceTracker.setSellRunEnable(false);
-            sequenceTracker.setLastSellValue(0.0d);
-            sequenceTracker.setNextSellValue(0.0d);
-            sequenceTracker.setTpSellMargin(tpMargin);
-            sequenceTracker.setSellMargin1(tpMargin / 4.0d);
-            sequenceTracker.setSellMargin2(tpMargin / 2.0d);
-            sequenceTracker.setSellTpOrderFilled(true);
-        }
-
-        getTickerSequenceTrackerMap().put(ticker, sequenceTracker);
-
-        LOGGER.info("Added sequence tracker for ticker [{}]", ticker);
-    }
+//    private void addUpdateTickerSequenceTracker(String ticker, Double tpMargin, OrderType orderType) {
+//
+//        SequenceTracker sequenceTracker = getTickerSequenceTrackerMap().get(ticker);
+//        if (sequenceTracker == null) {
+//            sequenceTracker = new SequenceTracker();
+//        }
+//
+//        if (OrderType.BUY.equals(orderType)) {
+//            sequenceTracker.setBuyRunEnable(true);
+//            sequenceTracker.setLastBuyValue(0.0d);
+//            sequenceTracker.setNextBuyValue(0.0d);
+//            sequenceTracker.setTpBuyMargin(tpMargin);
+//            sequenceTracker.setBuyMargin1(tpMargin / 4.0d);
+//            sequenceTracker.setBuyMargin2(tpMargin / 2.0d);
+//            sequenceTracker.setBuyTpOrderFilled(true);
+//        } else if (OrderType.SELL.equals(orderType)) {
+//            sequenceTracker.setSellRunEnable(false);
+//            sequenceTracker.setLastSellValue(0.0d);
+//            sequenceTracker.setNextSellValue(0.0d);
+//            sequenceTracker.setTpSellMargin(tpMargin);
+//            sequenceTracker.setSellMargin1(tpMargin / 4.0d);
+//            sequenceTracker.setSellMargin2(tpMargin / 2.0d);
+//            sequenceTracker.setSellTpOrderFilled(true);
+//        }
+//
+//        getTickerSequenceTrackerMap().put(ticker, sequenceTracker);
+//
+//        LOGGER.info("Added sequence tracker for ticker [{}]", ticker);
+//    }
 
     private void createOrderWithNextValue(SequenceTracker sequenceTracker, OrderType orderType, String ticker, Double transactionPrice, Integer quantity) {
 
@@ -377,18 +377,18 @@ public class ContractServiceImpl implements ContractService {
         return getMarketDataResponseDto;
     }
 
-    @Override
-    public Double getLatestTickerLTP(String ticker) throws Exception {
-        if(tickerSequenceTrackerMap.get(ticker).getLtp() != null){
-            return tickerSequenceTrackerMap.get(ticker).getLtp();
-        }
-        else {
-            UpdateSequenceTrackerThread thread = new UpdateSequenceTrackerThread(getTickerSequenceTrackerMap().get(ticker), getContractRepository(), ticker);
-            thread.start();
-            thread.join();
-            return getTickerSequenceTrackerMap().get(ticker).getLtp();
-        }
-    }
+//    @Override
+//    public Double getLatestTickerLTP(String ticker) throws Exception {
+//        if(tickerSequenceTrackerMap.get(ticker).getLtp() != null){
+//            return tickerSequenceTrackerMap.get(ticker).getLtp();
+//        }
+//        else {
+//            UpdateSequenceTrackerThread thread = new UpdateSequenceTrackerThread(getTickerSequenceTrackerMap().get(ticker), getContractRepository(), ticker);
+//            thread.start();
+//            thread.join();
+//            return getTickerSequenceTrackerMap().get(ticker).getLtp();
+//        }
+//    }
 
     @Override
     public Double getLatestTickerLTPFromDB(String ticker) throws IllegalArgumentException {
@@ -414,14 +414,14 @@ public class ContractServiceImpl implements ContractService {
         this.baseService = baseService;
     }
 
-    @Override
-    public Map<String, SequenceTracker> getTickerSequenceTrackerMap() {
-        return tickerSequenceTrackerMap;
-    }
-
-    public void setTickerSequenceTrackerMap(Map<String, SequenceTracker> tickerSequenceTrackerMap) {
-        this.tickerSequenceTrackerMap = tickerSequenceTrackerMap;
-    }
+//    @Override
+//    public Map<String, SequenceTracker> getTickerSequenceTrackerMap() {
+//        return tickerSequenceTrackerMap;
+//    }
+//
+//    public void setTickerSequenceTrackerMap(Map<String, SequenceTracker> tickerSequenceTrackerMap) {
+//        this.tickerSequenceTrackerMap = tickerSequenceTrackerMap;
+//    }
 
     public ContractRepository getContractRepository() {
         return contractRepository;

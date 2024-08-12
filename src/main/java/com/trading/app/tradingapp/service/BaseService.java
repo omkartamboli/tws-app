@@ -8,6 +8,7 @@ import com.ib.client.Order;
 import com.trading.app.tradingapp.dto.OrderType;
 import com.trading.app.tradingapp.dto.response.MarketDataDto;
 import com.trading.app.tradingapp.persistance.entity.ContractEntity;
+import com.trading.app.tradingapp.persistance.entity.OrderEntity;
 import com.trading.app.tradingapp.util.RequestMarketDataThread;
 
 public interface BaseService {
@@ -36,5 +37,5 @@ public interface BaseService {
 
     void transmitOrder(Order order, String ticker, boolean transmitFla);
 
-    public void updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice);
+    OrderEntity updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice);
 }

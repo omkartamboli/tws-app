@@ -31,15 +31,15 @@ public class ContractsController {
     }
 
 
-    @PostMapping("/startbuysequence")
-    public void startBuySequence(@RequestBody StartRunSequenceFormDto startRunSequenceFormDto) {
-        getContractService().startBuySequence(startRunSequenceFormDto.getTickerSymbol(), startRunSequenceFormDto.getTpMargin(), startRunSequenceFormDto.getQuantity());
-    }
-
-    @PostMapping("/stopBuySequence/{tickerSymbol}")
-    public void stopBuySequence(@PathVariable String tickerSymbol) {
-        getContractService().stopBuySequence(tickerSymbol);
-    }
+//    @PostMapping("/startbuysequence")
+//    public void startBuySequence(@RequestBody StartRunSequenceFormDto startRunSequenceFormDto) {
+//        getContractService().startBuySequence(startRunSequenceFormDto.getTickerSymbol(), startRunSequenceFormDto.getTpMargin(), startRunSequenceFormDto.getQuantity());
+//    }
+//
+//    @PostMapping("/stopBuySequence/{tickerSymbol}")
+//    public void stopBuySequence(@PathVariable String tickerSymbol) {
+//        getContractService().stopBuySequence(tickerSymbol);
+//    }
 
 
     @GetMapping("/setSymbol/{tickerSymbol}")

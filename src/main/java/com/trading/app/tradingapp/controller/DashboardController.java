@@ -220,23 +220,23 @@ public class DashboardController {
         return new RedirectView("/dashboard");
     }
 
-    @PostMapping(value = "/dashboard/createStepOrder", params = "startBuyRunAction")
-    public RedirectView startBuyRun(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
-
-        // start buy run sequence
-        getContractService().startBuySequence(createSetOrderFormDto.getTicker(), createSetOrderFormDto.getStartBuyRunMargin(), createSetOrderFormDto.getQuantity());
-
-        return new RedirectView("/dashboard");
-    }
-
-    @PostMapping(value = "/dashboard/createStepOrder", params = "stopBuyRunAction")
-    public RedirectView stopBuyRun(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
-
-        // start buy run sequence
-        getContractService().stopBuySequence(createSetOrderFormDto.getTicker());
-
-        return new RedirectView("/dashboard");
-    }
+//    @PostMapping(value = "/dashboard/createStepOrder", params = "startBuyRunAction")
+//    public RedirectView startBuyRun(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
+//
+//        // start buy run sequence
+//        getContractService().startBuySequence(createSetOrderFormDto.getTicker(), createSetOrderFormDto.getStartBuyRunMargin(), createSetOrderFormDto.getQuantity());
+//
+//        return new RedirectView("/dashboard");
+//    }
+//
+//    @PostMapping(value = "/dashboard/createStepOrder", params = "stopBuyRunAction")
+//    public RedirectView stopBuyRun(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
+//
+//        // start buy run sequence
+//        getContractService().stopBuySequence(createSetOrderFormDto.getTicker());
+//
+//        return new RedirectView("/dashboard");
+//    }
 
     @PostMapping(value = "/dashboard/createStepOrder", params = "buySLOrder")
     public RedirectView buySLOrder(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
@@ -293,23 +293,23 @@ public class DashboardController {
         return new RedirectView("/dashboard");
     }
 
-    @PostMapping(value = "/dashboard/createStepOrder", params = "startSellRunAction")
-    public RedirectView startSellRun(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
-
-        // start buy run sequence
-        getContractService().startSellSequence(createSetOrderFormDto.getTicker(), createSetOrderFormDto.getStartSellRunMargin(), createSetOrderFormDto.getQuantity());
-
-        return new RedirectView("/dashboard");
-    }
-
-    @PostMapping(value = "/dashboard/createStepOrder", params = "stopSellRunAction")
-    public RedirectView stopSellRun(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
-
-        // start buy run sequence
-        getContractService().stopSellSequence(createSetOrderFormDto.getTicker());
-
-        return new RedirectView("/dashboard");
-    }
+//    @PostMapping(value = "/dashboard/createStepOrder", params = "startSellRunAction")
+//    public RedirectView startSellRun(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
+//
+//        // start buy run sequence
+//        getContractService().startSellSequence(createSetOrderFormDto.getTicker(), createSetOrderFormDto.getStartSellRunMargin(), createSetOrderFormDto.getQuantity());
+//
+//        return new RedirectView("/dashboard");
+//    }
+//
+//    @PostMapping(value = "/dashboard/createStepOrder", params = "stopSellRunAction")
+//    public RedirectView stopSellRun(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {
+//
+//        // start buy run sequence
+//        getContractService().stopSellSequence(createSetOrderFormDto.getTicker());
+//
+//        return new RedirectView("/dashboard");
+//    }
 
     @PostMapping(value = "/dashboard/createStepOrder", params = "sellSLOrder")
     public RedirectView sellSLOrder(@ModelAttribute CreateSetOrderFormDto createSetOrderFormDto, Model model) {

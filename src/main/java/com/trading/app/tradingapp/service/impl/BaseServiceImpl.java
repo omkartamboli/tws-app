@@ -11,6 +11,7 @@ import com.trading.app.tradingapp.persistance.repository.ContractRepository;
 import com.trading.app.tradingapp.persistance.repository.OrderRepository;
 import com.trading.app.tradingapp.service.BaseService;
 import com.trading.app.tradingapp.service.ContractService;
+import com.trading.app.tradingapp.service.OrderService;
 import com.trading.app.tradingapp.service.SystemConfigService;
 import com.trading.app.tradingapp.util.RequestMarketDataThread;
 import org.slf4j.Logger;
@@ -30,9 +31,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BaseServiceImpl.class);
 
-    private EClientSocket eClientSocket;
+    private final EClientSocket eClientSocket;
 
-    private EReaderSignal eReaderSignal;
+    private final EReaderSignal eReaderSignal;
 
     private EReader eReader;
 
@@ -107,6 +108,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Resource
     private ContractService contractService;
+
+    @Resource
+    private OrderService orderService;
 
     public BaseServiceImpl() {
         eReaderSignal = new EJavaSignal();
@@ -401,7 +405,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     }
 
     @Override
-    public void updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice) {
+    public OrderEntity updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice) {
         Optional<OrderEntity> orderEntityOptional = getOrderRepository().findById(orderId);
         if (orderEntityOptional.isPresent()) {
             OrderEntity orderEntity = orderEntityOptional.get();
@@ -442,8 +446,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
             orderEntity.setStatusUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
             getOrderRepository().saveAndFlush(orderEntity);
-
+            return orderEntity;
         }
+        return null;
     }
 
 
@@ -562,13 +567,13 @@ public class BaseServiceImpl implements BaseService, EWrapper {
                 updateContractEntity(contractEntity);
 
                 // update LTP in the runner
-                if (getContractService().getTickerSequenceTrackerMap() != null) {
-                    SequenceTracker sequenceTracker = getContractService().getTickerSequenceTrackerMap().get(contractEntity.getSymbol());
-                    if (sequenceTracker != null) {
-                        sequenceTracker.setLtp(price);
-                        LOGGER.info("Updated LTP in sequence tracker: Ticker Id:{}, Price: {}", tickerId, price);
-                    }
-                }
+//                if (getContractService().getTickerSequenceTrackerMap() != null) {
+//                    SequenceTracker sequenceTracker = getContractService().getTickerSequenceTrackerMap().get(contractEntity.getSymbol());
+//                    if (sequenceTracker != null) {
+//                        sequenceTracker.setLtp(price);
+//                        LOGGER.info("Updated LTP in sequence tracker: Ticker Id:{}, Price: {}", tickerId, price);
+//                    }
+//                }
             } else {
                 LOGGER.warn("Received LTP for invalid tickerId {}", tickerId);
             }
@@ -628,22 +633,37 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     public void orderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, int permId, int parentId, double lastFillPrice, int clientId, String whyHeld, double mktCapPrice) {
         //LOGGER.info("Got order status for order: [{}]", orderId);
         //LOGGER.info("Data: status:[{}], filled:[{}], remaining:[{}], avgFillPrice:[{}], parent order id:[{}], clientId:[{}], mktCapPrice:[{}], whyHeld:[{}]", status, filled, remaining, avgFillPrice, parentId, clientId, mktCapPrice, whyHeld);
-        updateOrderStatus(orderId, status, filled, remaining, avgFillPrice, whyHeld, mktCapPrice);
+        OrderEntity orderToUpdate = updateOrderStatus(orderId, status, filled, remaining, avgFillPrice, whyHeld, mktCapPrice);
         LOGGER.info("Order status is updated in the database for order: [{}]. Status: [{}]", orderId, status);
 
         // If order is Filled
         if (FILLED_STATUS.equalsIgnoreCase(status)) {
 
-            getContractService().getTickerSequenceTrackerMap().values().forEach(sequenceTracker -> {
-                if (sequenceTracker.getBuyTpOrderId().equals(orderId)) {
-                    sequenceTracker.setBuyTpOrderFilled(true);
-                    return;
+//            getContractService().getTickerSequenceTrackerMap().values().forEach(sequenceTracker -> {
+//                if (sequenceTracker.getBuyTpOrderId().equals(orderId)) {
+//                    sequenceTracker.setBuyTpOrderFilled(true);
+//                    return;
+//                }
+//                if (sequenceTracker.getSellTpOrderId().equals(orderId)) {
+//                    sequenceTracker.setSellTpOrderFilled(true);
+//                    return;
+//                }
+//            });
+
+            // Update SL order quantity based on original order Fill status
+            if(null != orderToUpdate && null != orderToUpdate.getTradeStartSequenceId()){
+                OrderEntity slOrder = getOrderService().getSingleOrderBySlCheckSequenceId(orderToUpdate.getTradeStartSequenceId());
+                if(null != slOrder){
+                    double currentOutstandingQty = Math.abs(getOrderService().findOutstandingQtyForTickerWithSpecificOrderTrigger(orderToUpdate.getSymbol(), orderToUpdate.getOrderTrigger(), orderToUpdate.getOrderTriggerInterval()));
+
+                    // If new quantity for SL order  is zero then cancel SL order, else change quantity to new quantity
+                    if(currentOutstandingQty == 0){
+                        getOrderService().cancelOrder(slOrder.getOrderId());
+                    } else {
+                        getOrderService().updateOrderQuantity(slOrder.getOrderId(), slOrder, currentOutstandingQty, eClientSocket);
+                    }
                 }
-                if (sequenceTracker.getSellTpOrderId().equals(orderId)) {
-                    sequenceTracker.setSellTpOrderFilled(true);
-                    return;
-                }
-            });
+            }
         }
     }
 
@@ -1066,5 +1086,13 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     private String getTradingAccount() {
         return getSystemConfigService().getString("tws.trading.account");
+    }
+
+    public OrderService getOrderService() {
+        return orderService;
+    }
+
+    public void setOrderService(OrderService orderService) {
+        this.orderService = orderService;
     }
 }

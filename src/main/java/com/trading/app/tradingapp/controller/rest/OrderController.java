@@ -93,12 +93,54 @@ public class OrderController {
     }
 
     @PostMapping("/otmacdtrade")
-    public void CreateOTMacdTradeOrder(@RequestBody OTMacdOrderRequestDto otMacdOrderRequestDto){
+    public void CreateOTMacdTradeOrder(@RequestBody OTMacdOrderRequestDto otMacdOrderRequestDto) throws Exception {
+        if(Long.valueOf(-1).equals(otMacdOrderRequestDto.getTradeStartSequenceId())){
+            return;
+        }
+        otMacdOrderRequestDto = updateQuantitiesAsPerContract(otMacdOrderRequestDto);
         orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + otMacdOrderRequestDto.getInterval() + "MIN" + "_" + otMacdOrderRequestDto.getTradeStartSequenceId());
     }
 
     @PostMapping("/otmacdtradeForPostman")
-    public CreateSetOrderResponseDto CreateOTMacdTradeOrderForPostman(@RequestBody OTMacdOrderRequestDto otMacdOrderRequestDto){
+    public CreateSetOrderResponseDto CreateOTMacdTradeOrderForPostman(@RequestBody OTMacdOrderRequestDto otMacdOrderRequestDto) throws Exception {
+        if(Long.valueOf(-1).equals(otMacdOrderRequestDto.getTradeStartSequenceId())){
+            return null;
+        }
+        otMacdOrderRequestDto = updateQuantitiesAsPerContract(otMacdOrderRequestDto);
         return orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + otMacdOrderRequestDto.getInterval() + "MIN" + "_" + otMacdOrderRequestDto.getTradeStartSequenceId());
+    }
+
+    private OTMacdOrderRequestDto updateQuantitiesAsPerContract(OTMacdOrderRequestDto otMacdOrderRequestDto){
+        if(null  == otMacdOrderRequestDto){
+            return null;
+        } else {
+            if(null != otMacdOrderRequestDto.getQuantity()){
+                otMacdOrderRequestDto.setQuantity(getQuantityForTicker(otMacdOrderRequestDto.getQuantity(), otMacdOrderRequestDto.getTicker()));
+            }
+
+            if(null != otMacdOrderRequestDto.getSlQuantity()){
+                otMacdOrderRequestDto.setSlQuantity(getQuantityForTicker(otMacdOrderRequestDto.getSlQuantity().intValue(), otMacdOrderRequestDto.getTicker()).doubleValue());
+            }
+            return otMacdOrderRequestDto;
+        }
+    }
+
+    private Integer getQuantityForTicker(Integer quantity, String ticker) {
+        if(null == ticker || null == quantity) {
+            return quantity;
+        } else {
+            if(ticker.equalsIgnoreCase("MNQ1!") || ticker.equalsIgnoreCase("MNQ")){
+                return quantity / 2;
+            } else if(ticker.equalsIgnoreCase("MES1!") || ticker.equalsIgnoreCase("MES")){
+                return quantity / 5;
+            } else if(ticker.equalsIgnoreCase("NQ1!") || ticker.equalsIgnoreCase("NQ")){
+                return quantity / 20;
+            } else if(ticker.equalsIgnoreCase("ES1!") || ticker.equalsIgnoreCase("ES")){
+                return quantity / 50;
+            } else {
+                return quantity;
+            }
+        }
+
     }
 }
