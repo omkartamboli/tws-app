@@ -652,7 +652,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
             // Update SL order quantity based on original order Fill status
             if(null != orderToUpdate && null != orderToUpdate.getTradeStartSequenceId()){
-                OrderEntity slOrder = getOrderService().getSingleOrderBySlCheckSequenceId(orderToUpdate.getTradeStartSequenceId());
+                OrderEntity slOrder = getOrderService().getSingleOrderBySlCheckSequenceIdAndTrigger(orderToUpdate.getTradeStartSequenceId(), orderToUpdate.getOrderTrigger());
                 if(null != slOrder){
                     double currentOutstandingQty = Math.abs(getOrderService().findOutstandingQtyForTickerWithSpecificOrderTrigger(orderToUpdate.getSymbol(), orderToUpdate.getOrderTrigger(), orderToUpdate.getOrderTriggerInterval()));
 

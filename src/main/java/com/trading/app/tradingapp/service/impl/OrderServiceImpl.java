@@ -417,14 +417,14 @@ public class OrderServiceImpl implements OrderService {
 
         if (isExitOrder) {
             if (outstandingQty > 0) {
-                // The exit order should make outstanding quantity zero
-                otMacdOrderRequestDto.setQuantity(Math.abs(outstandingQty.intValue()));
-
-                // Once we have set the exit order quantity to outstanding quantity, we want to cancel all unfilled orders to avoid quantity ambiguity
-                List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrders(ticker, orderTrigger, otMacdOrderRequestDto.getInterval());
+                // We want to cancel all unfilled orders when exit order is received, to avoid quantity ambiguity
+                List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrdersWithoutSLOrder(ticker, orderTrigger, otMacdOrderRequestDto.getInterval());
                 if (!CollectionUtils.isEmpty(unFilledOrderList)) {
                     unFilledOrderList.forEach(orderEntity -> cancelOrder(orderEntity.getOrderId()));
                 }
+
+                // The exit order should make outstanding quantity zero
+                otMacdOrderRequestDto.setQuantity(Math.abs(outstandingQty.intValue()));
             } else {
                 LOGGER.error(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER + ". \n Outstanding qty = [{}] \n Request json = [{}]",outstandingQty, JsonSerializer.serialize(otMacdOrderRequestDto));
                 return getFailedCreateSetOrderResult(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER);
@@ -649,8 +649,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public OrderEntity getSingleOrderBySlCheckSequenceId(Long slCheckSequenceId) {
-        List<OrderEntity> orderEntityList = getOrderRepository().findBySlCheckSequenceId(slCheckSequenceId);
+    public OrderEntity getSingleOrderBySlCheckSequenceIdAndTrigger(Long slCheckSequenceId, String trigger) {
+        List<OrderEntity> orderEntityList = getOrderRepository().findBySlCheckSequenceIdAndTrigger(slCheckSequenceId, trigger);
         if (CollectionUtils.isEmpty(orderEntityList)) {
             return null;
         }
@@ -1281,7 +1281,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order slOrder;
-        OrderEntity slOrderEntity = getSingleOrderBySlCheckSequenceId(tradeStartSequenceId);
+        OrderEntity slOrderEntity = getSingleOrderBySlCheckSequenceIdAndTrigger(tradeStartSequenceId, orderTrigger);
         Double currentOutstandingQty = (double) Math.abs(findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, interval));
         if(currentSequenceId != null) {
             if(currentSequenceId == -1) {

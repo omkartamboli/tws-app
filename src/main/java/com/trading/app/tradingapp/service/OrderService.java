@@ -36,7 +36,7 @@ public interface OrderService {
 
     void deleteAllInactiveOrders();
 
-    OrderEntity getSingleOrderBySlCheckSequenceId(Long slCheckSequenceId);
+    OrderEntity getSingleOrderBySlCheckSequenceIdAndTrigger(Long slCheckSequenceId, String trigger);
 
     int findOutstandingQtyForTickerWithSpecificOrderTrigger(String ticker, String orderTrigger, String interval);
 
