@@ -29,18 +29,20 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Integer> {
     @Query("select sum(order_a.filled) from OrderEntity as order_a where order_a.orderTrigger = :trigger and order_a.symbol = :symbol and order_a.orderAction = 'SELL' and order_a.orderTriggerInterval = :interval")
     Integer getTotalSellQtyForTickerWithSpecificOrderTrigger(@Param("symbol")String symbol, @Param("trigger")String trigger, @Param("interval")String interval);
 
+    @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled'")
+    List<OrderEntity> findAllUnFilledOrders();
+
     @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled' and o.symbol = :symbol and o.orderTrigger = :trigger and o.orderTriggerInterval = :interval")
-    List<OrderEntity> findUnFilledOrders(@Param("symbol")String symbol, @Param("trigger")String trigger, @Param("interval")String interval);
+    List<OrderEntity> findUnFilledOrdersForTicker(@Param("symbol")String symbol, @Param("trigger")String trigger, @Param("interval")String interval);
 
     @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled' and o.symbol = :symbol and o.orderTrigger = :trigger and o.orderTriggerInterval = :interval and o.orderType <> 'STP LMT'")
     List<OrderEntity> findUnFilledOrdersWithoutSLOrder(@Param("symbol")String symbol, @Param("trigger")String trigger, @Param("interval")String interval);
 
-
+    @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled' and o.symbol = :symbol and o.orderTrigger = :trigger and o.orderTriggerInterval = :interval and o.orderType <> 'STP LMT' and o.tradeStartSequenceId = :tradeStartSequenceId")
+    List<OrderEntity> findUnFilledOrdersWithoutSLOrder(@Param("symbol")String symbol, @Param("trigger")String trigger, @Param("interval")String interval, @Param("tradeStartSequenceId")Long tradeStartSequenceId);
 
     List<OrderEntity> findBySymbolAndOrderStatusNotIn(String symbol, List<String> orderStatuses);
 
     List<OrderEntity> findByOrderStatusIn(List<String> orderStatuses);
-
-
 
 }

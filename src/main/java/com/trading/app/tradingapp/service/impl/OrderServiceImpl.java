@@ -205,7 +205,6 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public void cancelOrder(int orderId) {
         try {
-            LOGGER.info("Cancelling order with OrderId=[{}], as the filled qty is less than the original qty", orderId);
             getBaseService().getConnection().cancelOrder(orderId);
         } catch (Exception ex) {
             LOGGER.error("Could not place a cancel order.", ex);
@@ -414,18 +413,20 @@ public class OrderServiceImpl implements OrderService {
 //        boolean isShortExitOrder = isExitOrder && "BUY".equalsIgnoreCase(otMacdOrderRequestDto.getOtsOrderType());
 
         Double outstandingQty = (double) Math.abs(findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, otMacdOrderRequestDto.getInterval()));
+        OrderEntity slOrderEntity = getSingleOrderBySlCheckSequenceIdAndTrigger(otMacdOrderRequestDto.getTradeStartSequenceId(), orderTrigger);
 
         if (isExitOrder) {
             if (outstandingQty > 0) {
                 // We want to cancel all unfilled orders when exit order is received, to avoid quantity ambiguity
-                List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrdersWithoutSLOrder(ticker, orderTrigger, otMacdOrderRequestDto.getInterval());
-                if (!CollectionUtils.isEmpty(unFilledOrderList)) {
-                    unFilledOrderList.forEach(orderEntity -> cancelOrder(orderEntity.getOrderId()));
-                }
-
+                cancelAllUnfilledNonSLOrdersForCurrentTrade(otMacdOrderRequestDto, orderTrigger, ticker);
                 // The exit order should make outstanding quantity zero
                 otMacdOrderRequestDto.setQuantity(Math.abs(outstandingQty.intValue()));
             } else {
+                // Here we have received an exit order for current trade, but outstanding quantity is zero.
+                // This means, there has been slippage in order filling for this trade. cancel all orders including SL order.
+                cancelAllUnfilledNonSLOrdersForCurrentTrade(otMacdOrderRequestDto, orderTrigger, ticker);
+                // also cancel SL order
+                cancelOrder(slOrderEntity.getOrderId());
                 LOGGER.error(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER + ". \n Outstanding qty = [{}] \n Request json = [{}]",outstandingQty, JsonSerializer.serialize(otMacdOrderRequestDto));
                 return getFailedCreateSetOrderResult(INVALID_OUTSTANDING_QUANTITY_FOR_EXIT_ORDER);
             }
@@ -434,11 +435,11 @@ public class OrderServiceImpl implements OrderService {
         try {
             boolean enableOrth = !otMacdOrderRequestDto.getTicker().contains(CME_FUTURES_SUFFIX);
             double tradePrice = roundOff(otMacdOrderRequestDto.getEntry(), otMacdOrderRequestDto.getTicker());
+            double latestLTP = getLtpForTicker(ticker);
 
             try {
                 // For Exit orders, set tradePrice as LTP if latest LTP is available for ticker in DB, for better execution success.
                 if(isExitOrder) {
-                    double latestLTP = getLtpForTicker(ticker);
                     // Set tradePrice as LTP if latest LTP is available for ticker in DB.
                     if (("BUY".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType()) && latestLTP > tradePrice) || ("SELL".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType()) && latestLTP < tradePrice)) {
                         tradePrice = latestLTP;
@@ -460,7 +461,7 @@ public class OrderServiceImpl implements OrderService {
             // Synchronizing the order creation block to avoid creating orders with duplicate order ID
             synchronized (this) {
                 try {
-                    orderList = createMacdOrders(eClientSocket, contract, getBaseService().getNextOrderId(), otMacdOrderRequestDto.getOrderType(), quantity, otMacdOrderRequestDto.getSlQuantity(), outstandingQty, tradePrice, otMacdOrderRequestDto.getSlForAvg(), enableOrth, otMacdOrderRequestDto.getTradeStartSequenceId(), otMacdOrderRequestDto.getCurrentSequenceId(), ticker, orderTrigger, otMacdOrderRequestDto.getInterval());
+                    orderList = createMacdOrders(eClientSocket, contract, getBaseService().getNextOrderId(), otMacdOrderRequestDto.getOrderType(), quantity, otMacdOrderRequestDto.getSlQuantity(), slOrderEntity, tradePrice, otMacdOrderRequestDto.getSlForAvg(), latestLTP, enableOrth, otMacdOrderRequestDto.getTradeStartSequenceId(), otMacdOrderRequestDto.getCurrentSequenceId(), ticker, orderTrigger, otMacdOrderRequestDto.getInterval());
                 } catch (Exception ex) {
                     LOGGER.error("Could not place a OT-MACD order with order id = [{}].", orderId, ex);
                     return getFailedCreateSetOrderResult(ex);
@@ -518,6 +519,14 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    private void cancelAllUnfilledNonSLOrdersForCurrentTrade(OTMacdOrderRequestDto otMacdOrderRequestDto, String orderTrigger, String ticker) {
+        List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrdersWithoutSLOrder(ticker, orderTrigger, otMacdOrderRequestDto.getInterval(), otMacdOrderRequestDto.getTradeStartSequenceId());
+        if (!CollectionUtils.isEmpty(unFilledOrderList)) {
+            unFilledOrderList.forEach(orderEntity -> cancelOrder(orderEntity.getOrderId()));
+        }
+    }
+
+
     @Override
     public CreateSetOrderResponseDto createOTSOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger) {
         // LOGGER.info(JsonSerializer.serialize(otStarTradeOrderRequestDto));
@@ -544,7 +553,7 @@ public class OrderServiceImpl implements OrderService {
                 otStarTradeOrderRequestDto.setQuantity(Math.abs(outstandingQty));
 
                 // Once we have set the exit order quantity to outstanding quantity, we want to cancel all unfilled orders to avoid quantity ambiguity
-                List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrders(ticker, orderTrigger, otStarTradeOrderRequestDto.getInterval());
+                List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrdersForTicker(ticker, orderTrigger, otStarTradeOrderRequestDto.getInterval());
                 if (!CollectionUtils.isEmpty(unFilledOrderList)) {
                     unFilledOrderList.forEach(orderEntity -> cancelOrder(orderEntity.getOrderId()));
                 }
@@ -1253,22 +1262,33 @@ public class OrderServiceImpl implements OrderService {
         return bracketOrder;
     }
 
-    private List<Order> createMacdOrders(EClientSocket eClientSocket, Contract contract , int orderId,  String action, double quantity, Double slQuantity, Double outstandingQty, double tradePrice, double slPrice, boolean enableOrth, Long tradeStartSequenceId, Long currentSequenceId, String ticker, String orderTrigger, String interval) throws Exception{
+    private List<Order> createMacdOrders(EClientSocket eClientSocket, Contract contract , int orderId,  String action, double quantity, Double slQuantity, OrderEntity slOrderEntity, double tradePrice, double slPrice, double latestLTP, boolean enableOrth, Long tradeStartSequenceId, Long currentSequenceId, String ticker, String orderTrigger, String interval) throws Exception{
+
+        Double currentOutstandingQty = (double) Math.abs(findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, interval));
+        // TODO : Add ticker to this SL Order query
+
+        double roundedSlPrice = roundOff(Math.abs(slPrice), ticker);
+
+        boolean slOverShot = (null != slOrderEntity) && (("SELL".equalsIgnoreCase(slOrderEntity.getOrderAction()) && latestLTP < roundedSlPrice) || ("BUY".equalsIgnoreCase(slOrderEntity.getOrderAction()) && latestLTP > roundedSlPrice));
+
         List<Order> bracketOrderList = new ArrayList<>();
 
-        // LOGGER.info("Creating single order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], interval=[{}]", orderTrigger, orderId, action, quantity, limitPrice, orderTriggerInterval);
-        //This will be our main or "parent" order
         Order order = new Order();
         order.orderId(orderId);
         order.action(action.toUpperCase());
-        order.orderType(com.ib.client.OrderType.LMT);
-        order.hidden(true);
-        order.totalQuantity(quantity);
-        order.lmtPrice(tradePrice);
-        order.tif(Types.TimeInForce.GTC);
-        if (enableOrth) {
-            order.outsideRth(true);
+
+        // If latest LTP is worse than SL Price, then get rid of all remaining quantity with market order to avoid slippage of quantity.
+        if(slOverShot){
+            order.orderType(OrderType.MKT);
+            order.totalQuantity(currentOutstandingQty);
+        }else{
+            order.orderType(OrderType.LMT);
+            order.totalQuantity(quantity);
+            order.lmtPrice(tradePrice);
         }
+        order.hidden(true);
+        order.tif(Types.TimeInForce.GTC);
+        order.outsideRth(enableOrth);
         order.account(DEFAULT_TRADING_ACCOUNT_NUMBER);
         order.transmit(true);
         bracketOrderList.add(order);
@@ -1281,33 +1301,28 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order slOrder;
-        OrderEntity slOrderEntity = getSingleOrderBySlCheckSequenceIdAndTrigger(tradeStartSequenceId, orderTrigger);
-        Double currentOutstandingQty = (double) Math.abs(findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, interval));
         if(currentSequenceId != null) {
             if(currentSequenceId == -1) {
                 // commented cancelling SL order here, as SL order quantity will be updated as and when the exit order will get filled.
                 // So that we will still have an SL order if target order do not get filled completely.
-//                if(null != slOrderEntity){
-//                    cancelOrder(slOrderEntity.getOrderId());
-//                }
+                //  if(null != slOrderEntity){
+                //      cancelOrder(slOrderEntity.getOrderId());
+                //  }
             } else {
                 slOrder = new Order();
                 Double absoluteSlQuantity = Math.abs(slQuantity);
-                double roundedSlPrice = roundOff(Math.abs(slPrice), ticker);
+                slOrder.action(slOrderEntity == null ? ("BUY".equalsIgnoreCase(action) ? "SELL" : "BUY") : slOrderEntity.getOrderAction());
+                double updatedSlOrderPrice = ("SELL".equalsIgnoreCase(slOrder.getAction()) && latestLTP < roundedSlPrice) || ("BUY".equalsIgnoreCase(slOrder.getAction()) && latestLTP > roundedSlPrice) ? latestLTP : roundedSlPrice;
                 slOrder.orderId(tradeStartSequenceId.equals(currentSequenceId) || slOrderEntity == null ? getBaseService().getNextOrderId() : slOrderEntity.getOrderId());
-                slOrder.action("BUY".equalsIgnoreCase(action) ? "SELL" : "BUY");
-                slOrder.orderType(OrderType.STP_LMT); //////// *******
-                slOrder.auxPrice(roundedSlPrice);
-                slOrder.lmtPrice(roundedSlPrice);
+                slOrder.orderType(OrderType.STP_LMT);
+                slOrder.auxPrice(updatedSlOrderPrice);
+                slOrder.lmtPrice(updatedSlOrderPrice);
                 slOrder.tif(Types.TimeInForce.GTC);
                 slOrder.outsideRth(enableOrth);
                 slOrder.hidden(true);
                 slOrder.totalQuantity(Double.valueOf(0).equals(currentOutstandingQty) ? absoluteSlQuantity : currentOutstandingQty);
                 slOrder.account(DEFAULT_TRADING_ACCOUNT_NUMBER);
-
-                // Do not transmit SL order here, just create order in exchange with all possible fields.
-                // When original order gets filled, then SL order will be updated with the filled qty and order will be transmitted then.
-                slOrder.transmit(false);
+                slOrder.transmit(true);
                 bracketOrderList.add(slOrder);
                 if(!slQuantity.equals(currentOutstandingQty)){
                     LOGGER.error("Outstanding Qty [{}] does not match with SL Quantity [{}]. Using quantity [{}] for SL order", currentOutstandingQty, absoluteSlQuantity, slOrder.totalQuantity());
@@ -1343,7 +1358,6 @@ public class OrderServiceImpl implements OrderService {
         newQtyOrder.orderType(orderToUpdate.getOrderType());
         if("STP LMT".equals(orderToUpdate.getOrderType())) {
             newQtyOrder.auxPrice(orderToUpdate.getStopLossTriggerPrice());
-
         }
 
         newQtyOrder.lmtPrice(orderToUpdate.getTransactionPrice());
@@ -1355,10 +1369,24 @@ public class OrderServiceImpl implements OrderService {
         newQtyOrder.transmit(true);
 
 
-        LOGGER.info("Updating quantity for order with id [{}]", newQtyOrder.orderId());
+        LOGGER.info("**** Updating quantity for order with id [{}]", newQtyOrder.orderId());
+        LOGGER.info("action=[{}]", newQtyOrder.action());
+        LOGGER.info("orderType=[{}]", newQtyOrder.getOrderType());
+        LOGGER.info("aux price (sl trigger price)=[{}]", newQtyOrder.auxPrice());
+        LOGGER.info("lmt price (sl lmt price)=[{}]", newQtyOrder.lmtPrice());
+        LOGGER.info("tif=[{}]", newQtyOrder.getTif());
+        LOGGER.info("outsideRth=[{}]", newQtyOrder.outsideRth());
+        LOGGER.info("hidden=[{}]", newQtyOrder.hidden());
+        LOGGER.info("total quantity=[{}]", newQtyOrder.totalQuantity());
+        LOGGER.info("account=[{}]", newQtyOrder.account());
+        LOGGER.info("transmit=[{}]", newQtyOrder.transmit());
+
+
         try {
             Contract contract = getBaseService().createContract(orderToUpdate.getSymbol());
             eClientSocket.placeOrder(newQtyOrder.orderId(), contract, newQtyOrder);
+            // persist order after qty update
+            persistMacdOrder(newQtyOrder, contract, orderToUpdate.getOrderTrigger(), orderToUpdate.getOrderTriggerInterval(), false, null, null, null, orderToUpdate.getTradeStartSequenceId().toString(), orderToUpdate.getOtsOrderType(), orderToUpdate.getTradeStartSequenceId(), orderToUpdate.getTradeStartSequenceId());
         } catch (Exception ex) {
             LOGGER.error("Placing order with id [{}] failed. Failed to get next Order Id", newQtyOrder.orderId());
         }
@@ -1483,7 +1511,7 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        LOGGER.info("##### ***** >>> TWS order id [{}], Sequence id [{}], OTS Order Type [{}] ***** #####", order.orderId(), sequenceId, otsOrderType);
+        // LOGGER.info("##### ***** >>> TWS order id [{}], Sequence id [{}], OTS Order Type [{}] ***** #####", order.orderId(), sequenceId, otsOrderType);
 
         Optional<OrderEntity> orderEntity1 = getOrderRepository().findById(order.orderId());
         return orderEntity1.orElse(orderEntity);
@@ -1539,7 +1567,8 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private OrderEntity persistMacdOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType, Long tradeStartSequenceId, Long slCheckSequenceId) {
+    @Override
+    public OrderEntity persistMacdOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType, Long tradeStartSequenceId, Long slCheckSequenceId) {
         if (BaseServiceImpl.OPTIONS_TYPE.equalsIgnoreCase(contract.getSecType())) {
             return persistOrder(order, contract, orderTrigger, orderTriggerInterval, true, contract.strike(), contract.lastTradeDateOrContractMonth(), contract.getRight(), waitForOrdersToBeCreated, null, null, null, sequenceId, otsOrderType, tradeStartSequenceId, slCheckSequenceId);
         } else {
@@ -1548,13 +1577,18 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public void cleanOrderState() {
+        LOGGER.info("Cancelling all open orders");
+    }
+
+    @Override
     public void deleteAllInactiveOrders() {
         Iterable<OrderEntity> ordersIterable = getOrderRepository().findAll();
         List<OrderEntity> orders = new ArrayList<>();
 
-        if (ordersIterable != null) {
-            ordersIterable.forEach(orders::add);
-        }
+
+        ordersIterable.forEach(orders::add);
+
 
         if (!orders.isEmpty()) {
             //List<OrderEntity> inactiveOrders = orders.stream().filter(order -> "PreSubmitted".equalsIgnoreCase(order.getOrderStatus()) || "Submitted".equalsIgnoreCase(order.getOrderStatus()) || "Inactive".equalsIgnoreCase(order.getOrderStatus()) || "Cancelled".equalsIgnoreCase(order.getOrderStatus())).collect(Collectors.toList());

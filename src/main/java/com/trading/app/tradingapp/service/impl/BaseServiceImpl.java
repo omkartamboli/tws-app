@@ -658,6 +658,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
                     // If new quantity for SL order  is zero then cancel SL order, else change quantity to new quantity
                     if(currentOutstandingQty == 0){
+                        LOGGER.info("Cancelling the SL order with OrderId=[{}], as the outstanding qty of original trade is 0, so SL order is not needed.", orderId);
                         getOrderService().cancelOrder(slOrder.getOrderId());
                     } else {
                         getOrderService().updateOrderQuantity(slOrder.getOrderId(), slOrder, currentOutstandingQty, eClientSocket);
@@ -876,6 +877,10 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
         LOGGER.error("Error : id="+id+" code="+errorCode+" msg="+errorMsg);
 
+        if(errorCode == 1100){
+            LOGGER.error("Connection to IBKR server has been lost... Removing all orders and setting state to all clean.");
+            // Send message mobile
+        }
     }
 
     @Override

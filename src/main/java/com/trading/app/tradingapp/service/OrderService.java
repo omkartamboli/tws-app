@@ -1,12 +1,16 @@
 package com.trading.app.tradingapp.service;
 
+import com.ib.client.Contract;
 import com.ib.client.EClientSocket;
+import com.ib.client.Order;
 import com.trading.app.tradingapp.dto.request.*;
 import com.trading.app.tradingapp.dto.response.CreateOptionsOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.CreateOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.CreateSetOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.UpdateSetOrderResponseDto;
 import com.trading.app.tradingapp.persistance.entity.OrderEntity;
+
+import java.util.List;
 
 
 public interface OrderService {
@@ -41,4 +45,8 @@ public interface OrderService {
     int findOutstandingQtyForTickerWithSpecificOrderTrigger(String ticker, String orderTrigger, String interval);
 
     void updateOrderQuantity(int orderId, OrderEntity orderEntity, double newQuantity, EClientSocket eClientSocket);
+
+    OrderEntity persistMacdOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType, Long tradeStartSequenceId, Long slCheckSequenceId);
+
+    void cleanOrderState();
 }
