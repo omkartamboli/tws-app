@@ -20,7 +20,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Integer> {
     @Query("select order from OrderEntity order where order.parentOcaOrder = :order")
     List<OrderEntity> findByParentOcaOrder(@Param("order") OrderEntity order);
 
-    @Query("select order from OrderEntity order where order.slCheckSequenceId = :slCheckSequenceId and order.orderTrigger = :trigger")
+    @Query("select order from OrderEntity order where order.slCheckSequenceId = :slCheckSequenceId and order.orderTrigger = :trigger and order.orderStatus <> 'Cancelled' order by order.createdTimestamp desc")
     List<OrderEntity> findBySlCheckSequenceIdAndTrigger(@Param("slCheckSequenceId") Long slCheckSequenceId, @Param("trigger") String trigger);
     
     @Query("select sum(order_a.filled) from OrderEntity as order_a where order_a.orderTrigger = :trigger and order_a.symbol = :symbol and order_a.orderAction = 'BUY' and order_a.orderTriggerInterval = :interval")
@@ -35,10 +35,10 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Integer> {
     @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled' and o.symbol = :symbol and o.orderTrigger = :trigger and o.orderTriggerInterval = :interval")
     List<OrderEntity> findUnFilledOrdersForTicker(@Param("symbol")String symbol, @Param("trigger")String trigger, @Param("interval")String interval);
 
-    @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled' and o.symbol = :symbol and o.orderTrigger = :trigger and o.orderTriggerInterval = :interval and o.orderType <> 'STP LMT'")
+    @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled' and o.symbol = :symbol and o.orderTrigger = :trigger and o.orderTriggerInterval = :interval and o.orderType <> 'STP LMT' and o.orderType <> 'STP'")
     List<OrderEntity> findUnFilledOrdersWithoutSLOrder(@Param("symbol")String symbol, @Param("trigger")String trigger, @Param("interval")String interval);
 
-    @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled' and o.symbol = :symbol and o.orderTrigger = :trigger and o.orderTriggerInterval = :interval and o.orderType <> 'STP LMT' and o.tradeStartSequenceId = :tradeStartSequenceId")
+    @Query("select o from OrderEntity as o where (o.filled is null or o.filled < o.quantity) and o.orderStatus <> 'Cancelled' and o.symbol = :symbol and o.orderTrigger = :trigger and o.orderTriggerInterval = :interval and o.orderType <> 'STP LMT' and o.orderType <> 'STP' and o.tradeStartSequenceId = :tradeStartSequenceId")
     List<OrderEntity> findUnFilledOrdersWithoutSLOrder(@Param("symbol")String symbol, @Param("trigger")String trigger, @Param("interval")String interval, @Param("tradeStartSequenceId")Long tradeStartSequenceId);
 
     List<OrderEntity> findBySymbolAndOrderStatusNotIn(String symbol, List<String> orderStatuses);

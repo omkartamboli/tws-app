@@ -1,0 +1,666 @@
+//@version=5
+indicator(title="OT-MACD-Strat", shorttitle="OT-MACD-Strat", overlay = true , max_labels_count = 500)
+// strategy(title="OT-MACD-Strat", shorttitle="OT-MACD-Strat", overlay = false , max_labels_count = 500, initial_capital = 100000, margin_long = 1, margin_short = 1, commission_type = strategy.commission.cash_per_contract, commission_value = 0.62, pyramiding = 100, max_bars_back = 500, use_bar_magnifier = true)
+
+source = close
+var overlayMode = true
+macd_colorChange = true
+hist_colorChange = true
+
+enableMACDTrades = input.bool(true, "Enable MACD Trades", group = "MACD Settings")
+enableMACDLongTrades = input.bool(true, "Enable MACD Long Trades", group = "MACD Settings")
+enableMACDShortTrades = input.bool(true, "Enable MACD Short Trades", group = "MACD Settings")
+fastLength = input.int(12, minval=1, group = "MACD Settings")
+slowLength = input.int(26,minval=1, group = "MACD Settings")
+signalLength = input.int(9,minval=1, group = "MACD Settings")
+
+stepQty = input.int(2, "Step Qty", minval = 1, group = "Trade Settings")
+enableScaling = input.bool(true, "Scale Quantity For Running Trade", group = "Trade Settings")
+scaleQuantityForRunningTrade = input.bool(true, "Scale Step Quantity For Running Trade", group = "Trade Settings")
+maxQtyForSingleTrade = input.int(55, "Max Qty For Single Trade", options = [10,20,30,35,40,45,50,55,60,65,70,75,80,100,150,200,250,300,400,500,750,1000,1500,2000,999999])
+commissionForStepQty = input.float(0.62, "Commission for step quantity", options = [0.0, 0.62, 1.24, 1.86, 2.48, 3.72, 4.96, 6.2, 2.2, 4.4, 6.6, 8.8, 11, 0.4,0.77,1.54,2.31], group = "Trade Settings")
+fastDepleteQuantity = input.bool(false, "Deplete quantity quickly", group = "Trade Settings")
+enableSignalFilter = input.bool(true, "Enable Signal Filter", group = "Trade Settings")
+smaFilter = input.bool(true, "Apply SMA filter", group = "Trade Settings")
+smaFilterLength = input.int(200, "SMA filter length", group = "Trade Settings")
+rsiFilter = input.bool(true, "Apply RSI filter", group = "Trade Settings")
+rsiFirstEntryFilter = input.bool(true, "Apply RSI filter on first entry only", group = "Trade Settings")
+rsiLongFilterLimit = input.int(55, "RSI long filter limit", group = "Trade Settings")
+rsiShortFilterLimit = input.int(45, "RSI short filter limit", group = "Trade Settings")
+atrFilter = input.bool(true, "Apply ATR Rising filter", group = "Trade Settings")
+atrFilterLength = input.int(21, "ATR filter length", minval = 1, group = "Trade Settings")
+vwapEntryFilter = input.bool(true, "Apply VWAP Rising/Falling filter for entries", group = "Trade Settings" )
+vwapExitFilter = input.bool(true, "Apply VWAP Rising/Falling filter for exits", group = "Trade Settings")
+vwapDeltaEntryFilter = input.bool(false, "Apply VWAP Delta Rising/Falling filter for entries", group = "Trade Settings")
+vwapDeltaExitFilter = input.bool(false, "Apply VWAP Delta Rising/Falling filter for exits", group = "Trade Settings")
+vixDailyFilter = input.bool(false, "Enable VX1! daily filter", group = "Trade Settings")
+vixDailyFilterType = input.string("CLOSE", "VX1! daily filter type", options = ["CLOSE", "LOW/HIGH"], group = "Trade Settings")
+
+invertBuySell = input.bool(true, "Invert Buy and Sell signals", group = "Trade Settings")
+invertSignalConditions = input.bool(true, "Invert Signal Conditions", group = "Trade Settings")
+invertVwapConditions = input.bool(true, "Invert VWAP Conditions", group = "Trade Settings")
+invertSmaConditions = input.bool(true, "Invert SMA Conditions", group = "Trade Settings")
+invertVixFilter = input.bool(false, "Invert VX1! Filter Conditions", group = "Trade Settings")
+
+enableTrailingSL = input.bool(false, "Enable Trailing SL for AVG price", group = "Trade Settings")
+trailingSLType = input.string("AVG PRICE", "Trailing SL relative to", options = ["AVG PRICE","LAST ENTRY"], group = "Trade Settings")
+tralingSLValInput = input.float(125.00, "Trailing SL Value", group = "Trade Settings")
+enableInvertTrailingSL = input.bool(true, "Enable Invert Trailing SL for AVG price", group = "Trade Settings")
+invertTralingSLValInput = input.float(36.00, "Invert Trailing SL Value", group = "Trade Settings")
+enableDynamicTralingSLValBasedOnATRAvgVal = input.bool(false, "Enable Dynamic Trailing SL Value (ATR)", group = "Trade Settings")
+atrMultiplierForSLVal = input.float(1.0, "ATR Multiplier For SL Val", group = "Trade Settings")
+
+takeMinSlVal = input.bool(false, "Take minimum of static and dynamic SL Val", group = "Trade Settings")
+
+
+indicatorTimeFilter = input.bool(true, "Apply start date and end date filter", group = "Stats Settings")
+indicatorStartTime = input.time(timestamp("2024-08-12T22:30:00"), title = "Stats start date", group = "Stats Settings")
+indicatorEndTime = input.time(timestamp("2024-12-31T22:30:00"), title = "Stats end date", group = "Stats Settings")
+showTable = input.bool(true, title = "Show stats table", group = "Stats Settings")
+showTradeLabels = input.bool(true, title = "Show trade labels", group = "Stats Settings")
+
+var bool atrRising = false
+var bool histRising = false
+var bool histFalling = false
+var bool vwapRising = false
+var bool vwapFalling = false
+var bool vwapDeltaRising = false
+var bool vwapDeltaFalling = false
+var tradeClosed = false
+
+
+var currentQty = 0
+var scaledStepQty = stepQty
+var float lastEntryPrice = 0.0
+var float currentTotalCostOfPosition = 0.0
+var float currentAvgCostOfPosition = 0.0
+var float currentPnL = 0.0
+var float totalProfit = 0.0
+var float totalLoss = 0.0
+var float maxProfitInOneTrade = 0.0
+var float maxLossInOneTrade = 0.0
+var int maxShortPosition = 0
+var int maxLongPosition = 0
+var float maxLowCapital = 0.0
+var int totalTransactions = 0
+var int transactionsInCurrentTrade = 0
+var int totalTransactionsInWinningTrades = 0
+var int totalTransactionsInLoosingTrades = 0
+var float avgWinningTradeTransactions = 0.0
+var float avgLoosingTradeTransactions = 0.0
+var float runningPnLOfCurrentTrade = 0.0
+var int totalCompletedTrades = 0
+var int totalWinningTrades = 0
+var int totalLoosingTrades = 0
+var float winPercentage = 0.0
+var float avgWinningTrade = 0.0
+var float avgLoosingTrade = 0.0
+var float profitFactor = 0.0
+var float vixPrevDayClose = 0.0
+var float vixPrevDayLow = 0.0
+var float vixPrevDayHigh = 0.0
+var float vixCurrentValue = 0.0
+var bool vixEntryAllowed = true
+
+/// Alert variables
+var baseTime = 0.0
+var prevSequenceId = 0.0
+var currentSequenceId = 0.0
+
+// temp
+var longOrderGenerated = false
+var shortOrderGenerated = false
+var transactionOperationValue = 0.0
+var transactionOperationQuantity = 0
+var slOrder = false
+var slForAvgGlobal = 0.0
+var tradeStartSequenceId = -1.0
+
+longOrderGenerated := false
+shortOrderGenerated := false
+slOrder := false
+transactionOperationValue := 0.0
+transactionOperationQuantity := 0
+
+
+// Set time vars
+baseTime := str.tonumber(str.format_time(time, "yyMMddHHmm", "Europe/London"))
+
+timeFilterEnabled = not indicatorTimeFilter or (time > indicatorStartTime and time < indicatorEndTime)
+tralingSLVal = tralingSLValInput
+invertTralingSLVal = invertTralingSLValInput
+
+fastMA = ta.ema(source, fastLength)
+slowMA = ta.ema(source, slowLength)
+atr = ta.atr(atrFilterLength)
+smaForFilter = ta.sma(source, smaFilterLength)
+
+if(enableDynamicTralingSLValBasedOnATRAvgVal)
+    tralingSLVal := takeMinSlVal ? math.min(tralingSLVal, atr * atrMultiplierForSLVal) : atr * atrMultiplierForSLVal
+    invertTralingSLVal := takeMinSlVal ? math.min(invertTralingSLVal, atr * atrMultiplierForSLVal) : atr * atrMultiplierForSLVal
+
+smaGoodForLong = not smaFilter or (invertSmaConditions ? source < smaForFilter : source > smaForFilter)
+smaGoodForShort = not smaFilter or (invertSmaConditions ? source > smaForFilter : source < smaForFilter)
+
+macd = fastMA - slowMA
+signal = ta.sma(macd, signalLength)
+hist = macd - signal
+isMacdCrossed = ta.cross(macd, signal)
+
+
+vixCurrentValue := request.security("VX1!", timeframe.period, close)
+// vixPrevDayClose := request.security("VX1!", "D", close[1])
+// vixPrevDayLow := request.security("VX1!", "D", low[1])
+// vixPrevDayHigh := request.security("VX1!", "D", high[1])
+
+[ph,pl,pc] = request.security("VX1!", "D", [high[1],low[1],close[1]])
+vixPrevDayClose := ph
+vixPrevDayLow := pl
+vixPrevDayHigh := pc
+
+
+vixEntryAllowed := true
+
+if(vixDailyFilter)
+    if("CLOSE" == vixDailyFilterType)
+        vixEntryAllowed := invertVixFilter ? vixCurrentValue > vixPrevDayClose : vixCurrentValue < vixPrevDayClose
+    if("LOW/HIGH" == vixDailyFilterType)
+        vixEntryAllowed := invertVixFilter ? vixCurrentValue > vixPrevDayLow : vixCurrentValue < vixPrevDayHigh
+
+
+atrRising := not atrFilter or (atr > atr[1] or (atr == atr[1] and atrRising[1]))
+histRising := hist > hist[1] or (hist == hist[1] and histRising[1])
+histFalling := hist < hist[1] or (hist == hist[1] and histFalling[1])
+
+histLong_IsUp = histRising and hist > 0
+histLong_IsDown = histFalling and hist > 0
+histShort_IsDown = histFalling and hist <= 0
+histShort_IsUp = histRising and hist <= 0
+
+//MacD Color Definitions
+macd_IsAbove = macd >= signal
+macd_IsBelow = macd < signal
+
+plot_color = hist_colorChange ? histLong_IsUp ? color.aqua : histLong_IsDown ? color.blue : histShort_IsDown ? color.red : histShort_IsUp ? color.maroon :color.yellow :color.gray
+macd_color = macd_colorChange ? macd_IsAbove ? color.lime : color.red : color.red
+signal_color = macd_colorChange ? macd_IsAbove ? color.yellow : color.yellow : color.lime
+
+circleYPosition = signal
+
+
+// MACD Layout Plots, to be hidden in the overlay = true mode
+plot(macd , title="MACD", color=macd_color, linewidth=1, display = overlayMode ? display.none : display.all)
+plot(signal, title="signal Line", color=signal_color, style=plot.style_line ,linewidth=1, display = overlayMode ? display.none : display.all)
+plot(hist, title="Histogram", color=plot_color, style=plot.style_histogram, linewidth=2, display = overlayMode ? display.none : display.all)
+plot(isMacdCrossed ? circleYPosition : na, title="Cross", style=plot.style_circles, linewidth=2, color=macd_color, display = overlayMode ? display.none : display.all)
+hline(0, '0 Line', linestyle=hline.style_solid, linewidth=1, color=color.white, display = overlayMode ? display.none : display.all)
+
+plot(series=baseTime, title = "baseTime", display=display.none)
+
+
+var bool winningTradeBar = false
+var bool loosingTradeBar = false
+
+localVarWinningTradeBar = winningTradeBar
+localVarLoosingTradeBar = loosingTradeBar
+
+winningTradeBar := false
+loosingTradeBar := false
+
+
+// VWAP calculations
+vwapValue = ta.vwap(source)
+vwapRising := vwapValue > vwapValue[1] or (vwapValue == vwapValue[1] and vwapRising[1])
+vwapFalling := vwapValue < vwapValue[1] or (vwapValue == vwapValue[1] and vwapFalling[1])
+vwapDeltaRising := ((vwapValue - vwapValue[1]) > (vwapValue[1] - vwapValue[2])) or (((vwapValue - vwapValue[1]) == (vwapValue[1] - vwapValue[2])) and vwapDeltaFalling[1])
+vwapDeltaFalling := ((vwapValue - vwapValue[1]) < (vwapValue[1] - vwapValue[2])) or (((vwapValue - vwapValue[1]) == (vwapValue[1] - vwapValue[2])) and vwapDeltaRising[1])
+
+if(invertVwapConditions)
+    originalVwapRising = vwapRising
+    originalVwapFalling = vwapFalling
+    originalDeltaVwapRising = vwapDeltaRising
+    originalDeltaVwapFalling = vwapDeltaFalling
+
+    vwapRising := originalVwapFalling
+    vwapFalling := originalVwapRising
+    vwapDeltaRising := originalDeltaVwapFalling
+    vwapDeltaFalling := originalDeltaVwapRising
+
+
+// RSI calculations
+rsiVal = ta.rsi(source, 14)
+
+buyPosition(qty, price, signal, color, isFirstTransactionInTrade, isLastTransactionInTrade, slHit, isEntry, slForAvg)=>
+    slStr1 = slHit ? "SL Hit \n\n": ""
+    slStr2 = slHit ? "\n\n\n\n\n\n": ""
+    returnValue = (qty * price) + ((qty/stepQty) * commissionForStepQty)
+
+    // if(activateStrategyFunctions)
+    //     if(isEntry)
+    //         strategy.order("LongEntry", strategy.long, qty, price, comment = "Long Entry")
+    //     else
+    //         strategy.order("ShortExit", strategy.short, qty, slHit ? close : price, comment = "Short Exit")
+
+    // sl = slForAvg        +"\nsl=" + str.tostring(slForAvg) + "\npsq=" + str.tostring(prevSequenceId) + "\ncsq=" + str.tostring(currentSequenceId)
+
+    if(showTradeLabels)
+        label.new(bar_index + 1, overlayMode ? close : signal,  slStr1+"Buy\n" + str.tostring(price,"#.##") + "\n" + str.tostring(qty) + "\n" + str.tostring(currentQty) + "\n" + str.tostring((currentTotalCostOfPosition - returnValue),"#,###") + "\npsq=" + str.tostring(prevSequenceId) + "\ncsq=" + str.tostring(currentSequenceId) + "\nstsq=" + str.tostring(tradeStartSequenceId) + slStr2, color = color, textcolor = color, style = label.style_arrowup, size = size.small)
+    // send alert to buy "qty" position at "price"
+    returnValue * (-1)
+
+
+sellPosition(qty, price, signal, color, isFirstTransactionInTrade, isLastTransactionInTrade, slHit, isEntry, slForAvg)=>
+    slStr1 = slHit ? "SL Hit \n\n": ""
+    slStr2 = slHit ? "\n\n\n\n\n\n": ""
+    returnValue = (qty * price) - ((qty/stepQty) * commissionForStepQty)
+
+    // if(activateStrategyFunctions)
+    //     if(isEntry)
+    //         strategy.order("ShortEntry", strategy.short, qty, slHit ? close : price, comment = "Short Entry")
+    //     else
+    //         strategy.order("LongExit", strategy.long, qty, slHit ? close : price, comment = "Long Exit")
+
+    if(showTradeLabels)
+        label.new(bar_index + 1, overlayMode ? close : signal, slStr1 + "Sell\n" + str.tostring(price,"#.##") + "\n" + str.tostring(qty) + "\n" + str.tostring(currentQty) + "\n" + str.tostring((currentTotalCostOfPosition + returnValue),"#,###") + "\npsq=" + str.tostring(prevSequenceId) + "\ncsq=" + str.tostring(currentSequenceId) + "\nstsq=" + str.tostring(tradeStartSequenceId) + slStr2, color = color, textcolor = color, style = label.style_arrowdown, size = size.small)
+    // send alert to sell "qty" position at "price"
+    returnValue
+
+
+performTransaction(qty, price, signal, color, isFirstTransactionInTrade, isLastTransactionInTrade, slHit, operation, isEntry, slForAvg)=>
+    returnValueOfOperation = 0.0
+    buy = false
+    sell = false
+    if(("BUY" == operation and not invertBuySell) or ("SELL" == operation and invertBuySell))
+        returnValueOfOperation := buyPosition(qty, price, signal, color, isFirstTransactionInTrade, isLastTransactionInTrade, slHit, isEntry, slForAvg)
+        buy := true
+    if(("SELL" == operation and not invertBuySell) or ("BUY" == operation and invertBuySell))
+        returnValueOfOperation := sellPosition(qty, price, signal, color, isFirstTransactionInTrade, isLastTransactionInTrade, slHit, isEntry, slForAvg)
+        sell := true
+    [returnValueOfOperation, buy, sell]
+
+priceForTransaction = source
+
+// Is any previous trade closed in this iteration?
+tradeClosed := false
+
+if(timeFilterEnabled and enableMACDTrades)
+    if(enableTrailingSL and not invertBuySell and currentQty != 0)
+        currentAvgCostOfPosition := math.abs(currentTotalCostOfPosition / currentQty)
+        slRefPrice = "AVG PRICE" == trailingSLType ? currentAvgCostOfPosition : lastEntryPrice
+        slPrice = currentQty > 0 ? slRefPrice - tralingSLVal : slRefPrice + tralingSLVal
+        slHit = currentQty > 0 ? low < slPrice : high > slPrice
+        // slTrxPrice = (currentQty > 0 and open < slPrice) ? low : ((currentQty < 0 and open > slPrice) ? high : slPrice)
+
+        if(slHit)
+            quantityToOperate = currentQty
+            currentQty := 0
+            scaledStepQty := stepQty
+            slOrder := true
+            if(quantityToOperate > 0)
+                prevSequenceId := currentSequenceId
+                currentSequenceId := -1
+                slTrxPrice = open < slPrice ? ((open + low)/2) : slPrice
+                // sell "currentQty"
+                [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(quantityToOperate, slTrxPrice, signal, color.red, false, true, true, "SELL", false, slForAvgGlobal)
+                transactionOperationValue := transactionOperationValue1
+                longOrderGenerated := longOrderGenerated1
+                shortOrderGenerated := shortOrderGenerated1
+                transactionOperationQuantity := quantityToOperate
+
+                currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+                totalTransactions := totalTransactions + 1
+                transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+                slForAvgGlobal := 0.0
+                tradeClosed := true
+                tradeStartSequenceId := -1
+
+            if(quantityToOperate < 0)
+                prevSequenceId := currentSequenceId
+                currentSequenceId := -1
+                slTrxPrice = open > slPrice ? ((open + high) / 2) : slPrice
+                // buy abs(currentQty)
+                [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(math.abs(quantityToOperate), slTrxPrice, signal, color.aqua, false, true, true, "BUY", false, slForAvgGlobal)
+                transactionOperationValue := transactionOperationValue1
+                longOrderGenerated := longOrderGenerated1
+                shortOrderGenerated := shortOrderGenerated1
+                transactionOperationQuantity := quantityToOperate
+
+                currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+                totalTransactions := totalTransactions + 1
+                transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+                slForAvgGlobal := 0.0
+                tradeClosed := true
+                tradeStartSequenceId := -1
+
+    if(not tradeClosed and invertBuySell and enableInvertTrailingSL and currentQty != 0)
+        currentAvgCostOfPosition := math.abs(currentTotalCostOfPosition / currentQty)
+        invSlRefPrice = "AVG PRICE" == trailingSLType ? currentAvgCostOfPosition : lastEntryPrice
+        invSlPrice = currentQty < 0 ? invSlRefPrice - invertTralingSLVal : invSlRefPrice + invertTralingSLVal
+        invSlHit = currentQty < 0 ? low < invSlPrice : high > invSlPrice
+
+        if(invSlHit)
+            quantityToOperate = currentQty
+            currentQty := 0
+            scaledStepQty := stepQty
+            slOrder := true
+            if(quantityToOperate > 0)
+                prevSequenceId := currentSequenceId
+                currentSequenceId := -1
+                invSlTrxPrice = open > invSlPrice ? ((open + high)/2) : invSlPrice
+                // sell "currentQty"
+                [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(quantityToOperate, invSlTrxPrice, signal, color.red, false, true, true, "SELL", false, slForAvgGlobal)
+                transactionOperationValue := transactionOperationValue1
+                longOrderGenerated := longOrderGenerated1
+                shortOrderGenerated := shortOrderGenerated1
+                transactionOperationQuantity := quantityToOperate
+
+                currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+                totalTransactions := totalTransactions + 1
+                transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+                slForAvgGlobal := 0.0
+                tradeClosed := true
+                tradeStartSequenceId := -1
+
+            if(quantityToOperate < 0)
+                prevSequenceId := currentSequenceId
+                currentSequenceId := -1
+                invSlTrxPrice = open < invSlPrice ? ((open + low)/2) : invSlPrice
+                // buy abs(currentQty)
+                [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(math.abs(quantityToOperate), invSlTrxPrice, signal, color.aqua, false, true, true, "BUY", false, slForAvgGlobal)
+                transactionOperationValue := transactionOperationValue1
+                longOrderGenerated := longOrderGenerated1
+                shortOrderGenerated := shortOrderGenerated1
+                transactionOperationQuantity := quantityToOperate
+
+                currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+                transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+                slForAvgGlobal := 0.0
+                tradeClosed := true
+                tradeStartSequenceId := -1
+
+    if(not tradeClosed and isMacdCrossed and currentQty != 0)
+        quantityToOperate = currentQty
+        currentQty := 0
+        scaledStepQty := stepQty
+        if(quantityToOperate > 0)
+            prevSequenceId := currentSequenceId
+            currentSequenceId := -1
+
+            // sell "currentQty"
+            [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(quantityToOperate, priceForTransaction, signal, color.red, false, true, false, "SELL", false, slForAvgGlobal)
+            transactionOperationValue := transactionOperationValue1
+            longOrderGenerated := longOrderGenerated1
+            shortOrderGenerated := shortOrderGenerated1
+            transactionOperationQuantity := quantityToOperate
+
+            currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+            totalTransactions := totalTransactions + 1
+            transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+            slForAvgGlobal := 0.0
+            tradeClosed := true
+
+
+        if(quantityToOperate < 0)
+            prevSequenceId := currentSequenceId
+            currentSequenceId := -1
+
+            // buy abs(currentQty)
+            [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(math.abs(quantityToOperate), priceForTransaction, signal, color.aqua, false, true, false, "BUY", false, slForAvgGlobal)
+            transactionOperationValue := transactionOperationValue1
+            longOrderGenerated := longOrderGenerated1
+            shortOrderGenerated := shortOrderGenerated1
+            transactionOperationQuantity := quantityToOperate
+
+            currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+            totalTransactions := totalTransactions + 1
+            transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+            slForAvgGlobal := 0.0
+            tradeClosed := true
+
+
+    if(not tradeClosed)
+
+        signalSupportForLong = (not enableSignalFilter) or (invertSignalConditions ? signal > 0 : signal < 0)
+        signalSupportForShort = (not enableSignalFilter) or (invertSignalConditions ? signal < 0 : signal > 0)
+        if(enableMACDLongTrades and histLong_IsUp and (atrRising or signalSupportForLong) and smaGoodForLong and (not vwapEntryFilter or vwapRising) and (not vwapDeltaEntryFilter or vwapDeltaRising) and currentQty < maxQtyForSingleTrade and (enableScaling or currentQty == 0) and vixEntryAllowed and (not rsiFilter or rsiLongFilterLimit > rsiVal or (rsiFirstEntryFilter and currentQty != 0)))
+            if(currentQty == 0)
+                tradeStartSequenceId := baseTime
+            currentStepQty = scaleQuantityForRunningTrade ? scaledStepQty : stepQty
+            scaledStepQty := scaledStepQty + stepQty
+            currentQty := currentQty + currentStepQty
+
+            prevSequenceId := currentQty == currentStepQty ? -1 : currentSequenceId
+            currentSequenceId := baseTime
+
+            // buy "stepQty" quantity in to current position
+            [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(currentStepQty, priceForTransaction, signal, color.green, currentQty == stepQty, false, false, "BUY", true, slForAvgGlobal)
+            transactionOperationValue := transactionOperationValue1
+            longOrderGenerated := longOrderGenerated1
+            shortOrderGenerated := shortOrderGenerated1
+            transactionOperationQuantity := currentStepQty
+            lastEntryPrice := priceForTransaction
+
+            currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+            currentAvgCostOfPosition := math.abs(currentTotalCostOfPosition / currentQty)
+            totalTransactions := totalTransactions + 1
+            transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+
+            slRefPrice = "AVG PRICE" == trailingSLType ? currentAvgCostOfPosition : lastEntryPrice
+            if(enableInvertTrailingSL and invertBuySell)
+                slForAvgGlobal := currentQty < 0 ? slRefPrice - invertTralingSLVal : slRefPrice + invertTralingSLVal
+            else
+                slForAvgGlobal := currentQty > 0 ? slRefPrice - tralingSLVal : slRefPrice + tralingSLVal
+
+        if(histLong_IsDown and currentQty > 0 and (not vwapExitFilter or vwapFalling) and (not vwapDeltaExitFilter or vwapDeltaFalling) and (enableScaling)) //and signal > 0)
+            scaledStepQty := scaledStepQty - stepQty
+            currentStepQty = scaleQuantityForRunningTrade ? scaledStepQty : stepQty
+            qtyToSell = fastDepleteQuantity or currentQty < currentStepQty ? currentQty : currentStepQty
+            currentQty := currentQty - qtyToSell
+
+            prevSequenceId := currentSequenceId
+            if(currentQty == 0)
+                currentSequenceId := -1
+            else
+                currentSequenceId := baseTime
+
+            // sell "qtyToSell" quantity from current position
+            [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(qtyToSell, priceForTransaction, signal, color.red, false, currentQty == 0, false, "SELL", false, slForAvgGlobal)
+            transactionOperationValue := transactionOperationValue1
+            longOrderGenerated := longOrderGenerated1
+            shortOrderGenerated := shortOrderGenerated1
+            transactionOperationQuantity := qtyToSell
+
+            currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+            currentAvgCostOfPosition := math.abs(currentTotalCostOfPosition / currentQty)
+            totalTransactions := totalTransactions + 1
+            transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+
+            slRefPrice = "AVG PRICE" == trailingSLType ? currentAvgCostOfPosition : lastEntryPrice
+            if(enableInvertTrailingSL and invertBuySell)
+                slForAvgGlobal := currentQty < 0 ? slRefPrice - invertTralingSLVal : slRefPrice + invertTralingSLVal
+            else
+                slForAvgGlobal := currentQty > 0 ? slRefPrice - tralingSLVal : slRefPrice + tralingSLVal
+
+        if(enableMACDShortTrades and histShort_IsDown and (atrRising or signalSupportForShort) and smaGoodForShort and (not vwapEntryFilter or vwapFalling) and (not vwapDeltaEntryFilter or vwapDeltaFalling) and math.abs(currentQty) < maxQtyForSingleTrade and (enableScaling or currentQty == 0) and vixEntryAllowed and (not rsiFilter or rsiShortFilterLimit < rsiVal or (rsiFirstEntryFilter and currentQty != 0)))
+            if(currentQty == 0)
+                tradeStartSequenceId := baseTime
+            currentStepQty = scaleQuantityForRunningTrade ? scaledStepQty : stepQty
+            scaledStepQty := scaledStepQty + stepQty
+            currentQty := currentQty - currentStepQty
+
+            prevSequenceId := math.abs(currentQty) == currentStepQty ? -1 : currentSequenceId
+            currentSequenceId := baseTime
+
+            // sell "stepQty" quantity from current position
+            [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(currentStepQty, priceForTransaction, signal, color.fuchsia, currentQty == stepQty, false, false, "SELL", true, slForAvgGlobal)
+            transactionOperationValue := transactionOperationValue1
+            longOrderGenerated := longOrderGenerated1
+            shortOrderGenerated := shortOrderGenerated1
+            transactionOperationQuantity := currentStepQty
+            lastEntryPrice := priceForTransaction
+
+            currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+            currentAvgCostOfPosition := math.abs(currentTotalCostOfPosition / currentQty)
+            totalTransactions := totalTransactions + 1
+            transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+
+            slRefPrice = "AVG PRICE" == trailingSLType ? currentAvgCostOfPosition : lastEntryPrice
+            if(enableInvertTrailingSL and invertBuySell)
+                slForAvgGlobal := currentQty < 0 ? slRefPrice - invertTralingSLVal : slRefPrice + invertTralingSLVal
+            else
+                slForAvgGlobal := currentQty > 0 ? slRefPrice - tralingSLVal : slRefPrice + tralingSLVal
+
+        if(histShort_IsUp and currentQty < 0 and (not vwapExitFilter or vwapRising) and (not vwapDeltaExitFilter or vwapDeltaRising) and (enableScaling)) // and signal < 0)
+            scaledStepQty := scaledStepQty - stepQty
+            currentStepQty = scaleQuantityForRunningTrade ? scaledStepQty : stepQty
+            qtyToBuy = fastDepleteQuantity or currentQty > (currentStepQty * -1) ? math.abs(currentQty) : currentStepQty
+            currentQty := currentQty + qtyToBuy
+
+            prevSequenceId := currentSequenceId
+            if(currentQty == 0)
+                currentSequenceId := -1
+            else
+                currentSequenceId := baseTime
+
+            // buy "qtyToBuy" quantity in to current position
+            [transactionOperationValue1, longOrderGenerated1, shortOrderGenerated1] = performTransaction(qtyToBuy, priceForTransaction, signal, color.aqua, false, currentQty == 0, false, "BUY", false, slForAvgGlobal)
+            transactionOperationValue := transactionOperationValue1
+            longOrderGenerated := longOrderGenerated1
+            shortOrderGenerated := shortOrderGenerated1
+            transactionOperationQuantity := qtyToBuy
+
+            currentTotalCostOfPosition := currentTotalCostOfPosition + transactionOperationValue
+            currentAvgCostOfPosition := math.abs(currentTotalCostOfPosition / currentQty)
+            totalTransactions := totalTransactions + 1
+            transactionsInCurrentTrade := transactionsInCurrentTrade + 1
+
+            slRefPrice = "AVG PRICE" == trailingSLType ? currentAvgCostOfPosition : lastEntryPrice
+            if(enableInvertTrailingSL and invertBuySell)
+                slForAvgGlobal := currentQty < 0 ? slRefPrice - invertTralingSLVal : slRefPrice + invertTralingSLVal
+            else
+                slForAvgGlobal := currentQty > 0 ? slRefPrice - tralingSLVal : slRefPrice + tralingSLVal
+
+    // If currentQty = 0 and currentTotalCostOfPosition != 0 means the trade has closed in this candle so
+    // add currentTotalCostOfPosition total to PnL and reset currentTotalCostOfPosition to 0 for next trade
+    if(currentQty == 0 and currentTotalCostOfPosition != 0)
+        currentPnL := currentPnL + currentTotalCostOfPosition
+
+        if(currentTotalCostOfPosition > 0)
+            totalWinningTrades := totalWinningTrades + 1
+            totalProfit := totalProfit + currentTotalCostOfPosition
+            avgWinningTrade := totalProfit / totalWinningTrades
+            totalTransactionsInWinningTrades := totalTransactionsInWinningTrades + transactionsInCurrentTrade
+            avgWinningTradeTransactions := totalTransactionsInWinningTrades / totalWinningTrades
+            winningTradeBar := true
+
+        if(currentTotalCostOfPosition < 0)
+            totalLoosingTrades := totalLoosingTrades + 1
+            totalLoss := totalLoss + math.abs(currentTotalCostOfPosition)
+            avgLoosingTrade := totalLoss / totalLoosingTrades
+            totalTransactionsInLoosingTrades := totalTransactionsInLoosingTrades + transactionsInCurrentTrade
+            avgLoosingTradeTransactions := totalTransactionsInLoosingTrades / totalLoosingTrades
+            loosingTradeBar := true
+
+        totalCompletedTrades := totalCompletedTrades + 1
+        winPercentage := (totalWinningTrades / totalCompletedTrades) * 100
+
+        if(currentTotalCostOfPosition <= maxLossInOneTrade)
+            maxLossInOneTrade := currentTotalCostOfPosition
+
+        if(currentTotalCostOfPosition > maxProfitInOneTrade)
+            maxProfitInOneTrade := currentTotalCostOfPosition
+
+        if(currentPnL < maxLowCapital)
+            maxLowCapital := currentPnL
+
+        profitFactor := totalProfit / totalLoss
+
+        currentTotalCostOfPosition := 0.0
+        currentAvgCostOfPosition := 0.0
+        slForAvgGlobal := 0.0
+        transactionsInCurrentTrade := 0
+        scaledStepQty := stepQty
+
+    if(currentQty < maxShortPosition)
+        maxShortPosition := currentQty
+
+    if(currentQty > maxLongPosition)
+        maxLongPosition := currentQty
+
+bgcolor(localVarWinningTradeBar ?color.blue : na)
+bgcolor(localVarLoosingTradeBar ?color.yellow : na)
+
+if(showTable)
+    table = table.new(position=position.bottom_right, columns=2, rows=18, frame_color=color.white, bgcolor=color.black)
+    table.cell(table, column=0, row=0, text="Current Quantity", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=0, text=str.tostring(currentQty), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=1, text="Current Cost Of Position", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=1, text=str.tostring(currentTotalCostOfPosition,"#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=2, text="Current PnL", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=2, text=str.tostring(currentPnL, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=3, text="Max Profit In One Trade", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=3, text=str.tostring(maxProfitInOneTrade, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=4, text="Max Loss In One Trade", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=4, text=str.tostring(maxLossInOneTrade, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=5, text="Max Short Position", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=5, text=str.tostring(maxShortPosition, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=6, text="Max Long Position", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=6, text=str.tostring(maxLongPosition, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=7, text="Max Low Capital", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=7, text=str.tostring(maxLowCapital, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=8, text="Total Transactions", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=8, text=str.tostring(totalTransactions, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=9, text="Total Completed Trades", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=9, text=str.tostring(totalCompletedTrades, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=10, text="Total Winning Trades", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=10, text=str.tostring(totalWinningTrades, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=11, text="Total Loosing Trades", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=11, text=str.tostring(totalLoosingTrades, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=12, text="Win Percentage", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=12, text=str.tostring(winPercentage, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=13, text="Avg Winning Trade", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=13, text=str.tostring(avgWinningTrade, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=14, text="Avg Loosing Trade", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=14, text=str.tostring(avgLoosingTrade, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=15, text="Profit Factor", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=15, text=str.tostring(profitFactor, "#.###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=16, text="Avg Winning Trade Transactions", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=16, text=str.tostring(avgWinningTradeTransactions, "#,###"), bgcolor=color.black, text_color=color.white)
+
+    table.cell(table, column=0, row=17, text="Avg Loosing Trade Transactions", bgcolor=color.black, text_color=color.white)
+    table.cell(table, column=1, row=17, text=str.tostring(avgLoosingTradeTransactions, "#,###"), bgcolor=color.black, text_color=color.white)
+
+plot(series=baseTime, title = "baseTime", display=display.none)
+plot(series=prevSequenceId, title = "prevSequenceId", display=display.none)
+plot(series=currentSequenceId, title = "currentSequenceId", display=display.none)
+plot(series=tradeStartSequenceId, title = "tradeStartSequenceId", display=display.none)
+plot(series=transactionOperationQuantity, title = "transactionOperationQuantity", display=display.none)
+plot(series=slForAvgGlobal, title = "slForAvgGlobal", display=display.none)
+plot(series=currentQty, title = "currentQty", display=display.none)
+plot(series=currentQty != 0 ? slForAvgGlobal : na, offset = 1, title = "slForAvgGlobalForDisplay", linewidth = 1, style = plot.style_stepline, color = color.red, display = overlayMode ? display.all : display.none)
+plot(series=currentQty != 0 ? currentAvgCostOfPosition : na, offset = 1, title = "currentAvgCostOfPositionForDisplay", linewidth = 1, style = plot.style_stepline, color = color.green, display = overlayMode ? display.all : display.none)
+
+
+
+
+if(not overlayMode and not tradeClosed and showTradeLabels and currentQty != 0)
+    label.new(bar_index + 1, overlayMode ? slForAvgGlobal : signal-20,  "SL\n" + str.tostring(slForAvgGlobal,"#.##") , color = color.white, textcolor = color.white, style = label.style_diamond, size = size.small)
+
+alertcondition(longOrderGenerated and (tradeStartSequenceId != -1), title='OTS-MACD-BUY-Signal', message='{\n\t\"sequenceId\" : \"BUY | {{ticker}} | {{interval}} | {{plot("baseTime")}} | {{plot("transactionOperationQuantity")}}\", \n\t\"slQuantity\" : {{plot("currentQty")}}, \n\t\"otsOrderType\" : \"LE\", \n\t\"time\" : \"{{time}}\",\n\t\"orderType\" : \"BUY\",\n\t\"entry\" : {{close}}, \n\t\"high\" : {{high}}, \n\t\"low\" : {{low}},\n\t\"quantity\" : {{plot("transactionOperationQuantity")}},\n\t\"slForAvg\" : {{plot("slForAvgGlobal")}},\n\t\"prevSequenceId\" : {{plot("prevSequenceId")}},\n\t\"currentSequenceId\" : {{plot("currentSequenceId")}},\n\t\"tradeStartSequenceId\" : {{plot("tradeStartSequenceId")}},\n\t\"ticker\" : \"{{ticker}}\",\n\t\"interval\" : {{interval}}\n}')
+alertcondition(shortOrderGenerated and (tradeStartSequenceId != -1), title='OTS-MACD-SELL-Signal', message='{\n\t\"sequenceId\" : \"SELL | {{ticker}} | {{interval}} | {{plot("baseTime")}} | {{plot("transactionOperationQuantity")}}\", \n\t\"slQuantity\" : {{plot("currentQty")}}, \n\t\"otsOrderType\" : \"SE\", \n\t\"time\" : \"{{time}}\",\n\t\"orderType\" : \"SELL\",\n\t\"entry\" : {{close}}, \n\t\"high\" : {{high}}, \n\t\"low\" : {{low}},\n\t\"quantity\" : {{plot("transactionOperationQuantity")}},\n\t\"slForAvg\" : {{plot("slForAvgGlobal")}},\n\t\"prevSequenceId\" : {{plot("prevSequenceId")}},\n\t\"currentSequenceId\" : {{plot("currentSequenceId")}},\n\t\"tradeStartSequenceId\" : {{plot("tradeStartSequenceId")}},\n\t\"ticker\" : \"{{ticker}}\",\n\t\"interval\" : {{interval}}\n}')
