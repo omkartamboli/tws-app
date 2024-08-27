@@ -83,7 +83,7 @@ public class ApplicationStartupAction implements ApplicationListener<Application
         initiateSystemConfig();
 
         // delete all inactive orders
-        getOrderService().deleteAllInactiveOrders();
+        // getOrderService().deleteAllInactiveOrders();
 
         // Get TWS connection and start market data Feed
         try{

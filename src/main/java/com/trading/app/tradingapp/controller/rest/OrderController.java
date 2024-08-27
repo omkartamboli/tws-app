@@ -98,7 +98,8 @@ public class OrderController {
             return;
         }
         otMacdOrderRequestDto = updateQuantitiesAsPerContract(otMacdOrderRequestDto);
-        orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + otMacdOrderRequestDto.getInterval() + "MIN" + "_" + otMacdOrderRequestDto.getTradeStartSequenceId());
+        String ticker = otMacdOrderRequestDto.getTicker().replace("1!", "");
+        orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + ticker + "_" + otMacdOrderRequestDto.getInterval() + "_MIN_" + otMacdOrderRequestDto.getTradeStartSequenceId());
     }
 
     @PostMapping("/otmacdtradeForPostman")
@@ -107,7 +108,8 @@ public class OrderController {
             return null;
         }
         otMacdOrderRequestDto = updateQuantitiesAsPerContract(otMacdOrderRequestDto);
-        return orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + otMacdOrderRequestDto.getInterval() + "MIN" + "_" + otMacdOrderRequestDto.getTradeStartSequenceId());
+        String ticker = otMacdOrderRequestDto.getTicker().replace("1!", "");
+        return orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + ticker + "_" + otMacdOrderRequestDto.getInterval() + "_MIN_" + otMacdOrderRequestDto.getTradeStartSequenceId());
     }
 
     private OTMacdOrderRequestDto updateQuantitiesAsPerContract(OTMacdOrderRequestDto otMacdOrderRequestDto){

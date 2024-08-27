@@ -2,8 +2,8 @@ package com.trading.app.tradingapp.service.impl;
 
 import com.ib.client.*;
 import com.ib.contracts.FutContract;
+import com.trading.app.tradingapp.TradingAppApplication;
 import com.trading.app.tradingapp.dto.OptionType;
-import com.trading.app.tradingapp.dto.SequenceTracker;
 import com.trading.app.tradingapp.dto.response.MarketDataDto;
 import com.trading.app.tradingapp.persistance.entity.ContractEntity;
 import com.trading.app.tradingapp.persistance.entity.OrderEntity;
@@ -117,21 +117,19 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         eClientSocket = new EClientSocket(this, eReaderSignal);
     }
 
+    private void logLine(){
+        LOGGER.info("____________________________________________________________________________________________________\n");
+    }
     @Override
-    public EClientSocket getConnection() throws Exception {
-        if (eClientSocket.isConnected()) {
-            return eClientSocket;
-        }
-
-        LOGGER.info("____________________________________________________________________________________________________\n");
+    public void setupNewConnection() throws Exception {
         LOGGER.info("Creating TWS connection .....");
-        LOGGER.info("____________________________________________________________________________________________________\n");
+        logLine();
 
         LOGGER.info("Params:");
         LOGGER.info("[tws.api.host]=[{}]", getApiHost());
         LOGGER.info("[tws.api.port]=[{}]", getApiPort());
         LOGGER.info("[tws.api.clientId]=[{}]",getApiClientId());
-        LOGGER.info("____________________________________________________________________________________________________\n");
+        logLine();
 
         eClientSocket.eConnect(DEFAULT_API_HOST, DEFAULT_API_PORT, DEFAULT_API_CLIENT_ID);
 
@@ -154,17 +152,22 @@ public class BaseServiceImpl implements BaseService, EWrapper {
                 // start market data feed
                 getContractService().startMarketDataFeed(eClientSocket);
             }
-
         } catch (Exception ex) {
             LOGGER.error("Could not establish TWS connection .....", ex);
             throw ex;
         }
-
         LOGGER.info("TWS connection established .....");
-
-        return eClientSocket;
     }
 
+    @Override
+    public EClientSocket getConnection() throws Exception {
+        if (eClientSocket.isConnected()) {
+            return eClientSocket;
+        } else {
+            setupNewConnection();
+            return eClientSocket;
+        }
+    }
 
     private void processMessages(EClientSocket eClientSocket) {
         while (eClientSocket.isConnected()) {
@@ -653,15 +656,22 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             // Update SL order quantity based on original order Fill status
             if(null != orderToUpdate && null != orderToUpdate.getTradeStartSequenceId()){
                 OrderEntity slOrder = getOrderService().getSingleOrderBySlCheckSequenceIdAndTrigger(orderToUpdate.getTradeStartSequenceId(), orderToUpdate.getOrderTrigger());
-                if(null != slOrder){
+                if(null != slOrder && slOrder.getOrderId() != null && slOrder.getOrderId() != orderId ){
                     double currentOutstandingQty = Math.abs(getOrderService().findOutstandingQtyForTickerWithSpecificOrderTrigger(orderToUpdate.getSymbol(), orderToUpdate.getOrderTrigger(), orderToUpdate.getOrderTriggerInterval()));
 
                     // If new quantity for SL order  is zero then cancel SL order, else change quantity to new quantity
                     if(currentOutstandingQty == 0){
-                        LOGGER.info("Cancelling the SL order with OrderId=[{}], as the outstanding qty of original trade is 0, so SL order is not needed.", orderId);
+                        LOGGER.info("Cancelling the SL order with OrderId=[{}], as the outstanding qty of original trade is 0, so SL order is not needed.", slOrder.getOrderId());
                         getOrderService().cancelOrder(slOrder.getOrderId());
                     } else {
+                        LOGGER.info("Received FILLED status update for order [{}]. Updating quantity of the associated SL order with OrderId=[{}].", orderId, slOrder.getOrderId());
                         getOrderService().updateOrderQuantity(slOrder.getOrderId(), slOrder, currentOutstandingQty, eClientSocket);
+                    }
+                } else if (null != slOrder && slOrder.getOrderId() != null && slOrder.getOrderId() == orderId) {
+                    double currentOutstandingQtyForSlOrder = slOrder.getQuantity() - slOrder.getFilled();
+                    if(0 == currentOutstandingQtyForSlOrder && slOrder.getFilled() > 0){
+                        LOGGER.info("Received FULLY FILLED status update for SL order [{}]. Cancelling all other non filled non SL orders", slOrder.getOrderId());
+                        getOrderService().cancelAllUnfilledNonSLOrdersForCurrentTrade(slOrder.getOrderTriggerInterval(), slOrder.getTradeStartSequenceId(), slOrder.getOrderTrigger(), slOrder.getSymbol());
                     }
                 }
             }
@@ -875,11 +885,35 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     @Override
     public void error(int id, int errorCode, String errorMsg) {
 
-        LOGGER.error("Error : id="+id+" code="+errorCode+" msg="+errorMsg);
+        if(errorCode == 2104 || errorCode == 2106 || errorCode == 2158){
+            // ignore these error codes as they are not real errors.
+            return;
+        }
+        if(errorCode != 2109 || !errorMsg.startsWith("Order Event Warning:Attribute 'Outside Regular Trading Hours' is ignored") ){
+            LOGGER.error("Error : id="+id+" code="+errorCode+" msg="+errorMsg);
+        }
 
-        if(errorCode == 1100){
-            LOGGER.error("Connection to IBKR server has been lost... Removing all orders and setting state to all clean.");
-            // Send message mobile
+        if(errorCode == 10148 && !errorMsg.contains("state: Cancelled")){
+            LOGGER.error("*** >>> *** >>> Cancelling order with id [{}] failed. Attempting to cancel order again.", id);
+            getOrderService().cancelOrder(id);
+        }
+
+        if(errorCode == 507 || errorCode == 2110 || errorCode == 1100 || errorCode == 504){
+            LOGGER.error("The connection with TWS client is interrupted!!");
+            restartSpringBootApplication();
+        }
+    }
+
+    private void restartSpringBootApplication() {
+        try {
+            LOGGER.error("Terminating current connection with TWS client .....");
+            LOGGER.info("Initiating interrupt !!");
+            eReader.interrupt();
+            LOGGER.info("Initiating Disconnect !!");
+            eClientSocket.eDisconnect();
+            TradingAppApplication.restart();
+        }catch (Exception ex){
+            LOGGER.error("Exception while waiting to reconnect with TWS client", ex);
         }
     }
 

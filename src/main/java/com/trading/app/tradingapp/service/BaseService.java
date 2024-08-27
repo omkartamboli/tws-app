@@ -15,6 +15,8 @@ public interface BaseService {
 
     EClientSocket getConnection() throws Exception;
 
+    void setupNewConnection() throws Exception;
+
     int getNextOrderId() throws Exception;
 
     MarketDataDto getMarketDataForContract(Contract contract, boolean acceptStaleData) throws Exception;

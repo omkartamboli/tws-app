@@ -32,6 +32,8 @@ public interface OrderService {
 
     CreateSetOrderResponseDto createOTSOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger);
 
+    void cancelAllUnfilledNonSLOrdersForCurrentTrade(String interval, Long tradeStartSequenceId, String orderTrigger, String ticker);
+
     UpdateSetOrderResponseDto updateOrder(UpdateSetOrderRequestDto updateSetOrderRequestDto);
 
     UpdateSetOrderResponseDto cancelOrder(UpdateSetOrderRequestDto updateSetOrderRequestDto);

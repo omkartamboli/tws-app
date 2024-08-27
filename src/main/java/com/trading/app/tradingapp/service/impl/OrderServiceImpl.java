@@ -533,7 +533,12 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void cancelAllUnfilledNonSLOrdersForCurrentTrade(OTMacdOrderRequestDto otMacdOrderRequestDto, String orderTrigger, String ticker) {
-        List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrdersWithoutSLOrder(ticker, orderTrigger, otMacdOrderRequestDto.getInterval(), otMacdOrderRequestDto.getTradeStartSequenceId());
+        cancelAllUnfilledNonSLOrdersForCurrentTrade(otMacdOrderRequestDto.getInterval(), otMacdOrderRequestDto.getTradeStartSequenceId(), orderTrigger, ticker);
+    }
+
+    @Override
+    public void cancelAllUnfilledNonSLOrdersForCurrentTrade(String interval, Long tradeStartSequenceId, String orderTrigger, String ticker) {
+        List<OrderEntity> unFilledOrderList = getOrderRepository().findUnFilledOrdersWithoutSLOrder(ticker, orderTrigger, interval, tradeStartSequenceId);
         if (!CollectionUtils.isEmpty(unFilledOrderList)) {
             unFilledOrderList.forEach(orderEntity -> {
                 LOGGER.info("Cancelling partially filled / unfilled order with order id [{}]", orderEntity.getOrderId());
@@ -1283,11 +1288,14 @@ public class OrderServiceImpl implements OrderService {
     private List<Order> createMacdOrders(EClientSocket eClientSocket, Contract contract , int orderId,  String action, double quantity, Double slQuantity, OrderEntity slOrderEntity, double tradePrice, double slPrice, double latestLTP, boolean isFirstOrderOfTrade, Long tradeStartSequenceId, Long currentSequenceId, String ticker, String orderTrigger, String interval) throws Exception{
 
         Double currentOutstandingQty = (double) Math.abs(findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, interval));
-        // TODO : Add ticker to this SL Order query
 
         double roundedSlPrice = roundOff(Math.abs(slPrice), ticker);
-        boolean slOverShot = (null != slOrderEntity) && (("SELL".equalsIgnoreCase(slOrderEntity.getOrderAction()) && latestLTP < roundedSlPrice) || ("BUY".equalsIgnoreCase(slOrderEntity.getOrderAction()) && latestLTP > roundedSlPrice));
+        boolean slOverShot = (null != slOrderEntity) && (roundedSlPrice != 0d) && (("SELL".equalsIgnoreCase(slOrderEntity.getOrderAction()) && latestLTP < roundedSlPrice) || ("BUY".equalsIgnoreCase(slOrderEntity.getOrderAction()) && latestLTP > roundedSlPrice));
 
+        if(slOverShot && currentOutstandingQty == 0){
+            LOGGER.info(">>> *** >>> SL Overshoot detected but current outstanding qty is zero, so order creation is skipped");
+            throw new Exception("SL Overshoot detected but current outstanding qty is zero, so order creation is skipped");
+        }
         List<Order> bracketOrderList = new ArrayList<>();
 
         Order order = new Order();
@@ -1296,6 +1304,7 @@ public class OrderServiceImpl implements OrderService {
 
         // If latest LTP is worse than SL Price, then get rid of all remaining quantity with market order to avoid slippage of quantity.
         if(slOverShot){
+            LOGGER.info(">>> *** >>> SL Overshoot detected... \n original order [{}] \n SL Order [{}] \n SL Order action = [{}] \n Latest LTP = [{}] \n rounded SL price =[{}]", orderId, slOrderEntity.getOrderId(), slOrderEntity.getOrderAction(), latestLTP, roundedSlPrice);
             order.orderType(OrderType.MKT);
             order.totalQuantity(currentOutstandingQty);
         }else{
@@ -1308,7 +1317,7 @@ public class OrderServiceImpl implements OrderService {
         order.outsideRth(true);
         order.account(DEFAULT_TRADING_ACCOUNT_NUMBER);
         // If first order of the trade then we want to transmit main order along with SL order as child order, else transmit them separately.
-        order.transmit(!isFirstOrderOfTrade);
+        order.transmit(true);
         bracketOrderList.add(order);
 
         LOGGER.info("Placing order with id [{}]", order.orderId());
@@ -1319,42 +1328,34 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order slOrder;
-        if(currentSequenceId != null) {
-            if(currentSequenceId == -1) {
-                // commented cancelling SL order here, as SL order quantity will be updated as and when the exit order will get filled.
-                // So that we will still have an SL order if target order do not get filled completely.
-                //  if(null != slOrderEntity){
-                //      cancelOrder(slOrderEntity.getOrderId());
-                //  }
-            } else {
-                slOrder = new Order();
-                Double absoluteSlQuantity = Math.abs(slQuantity);
-                if(isFirstOrderOfTrade){
-                    slOrder.parentId(order.orderId());
-                }
-                slOrder.action(slOrderEntity == null ? ("BUY".equalsIgnoreCase(action) ? "SELL" : "BUY") : slOrderEntity.getOrderAction());
-                double updatedSlOrderPrice = ("SELL".equalsIgnoreCase(slOrder.getAction()) && latestLTP < roundedSlPrice) || ("BUY".equalsIgnoreCase(slOrder.getAction()) && latestLTP > roundedSlPrice) ? latestLTP : roundedSlPrice;
-                slOrder.orderId(isFirstOrderOfTrade || slOrderEntity == null ? getBaseService().getNextOrderId() : slOrderEntity.getOrderId());
-                slOrder.orderType(OrderType.STP_LMT);
-                slOrder.auxPrice(updatedSlOrderPrice);
-                slOrder.lmtPrice(updatedSlOrderPrice);
-                slOrder.tif(Types.TimeInForce.GTC);
-                slOrder.outsideRth(true);
-                slOrder.hidden(true);
-                slOrder.totalQuantity(Double.valueOf(0).equals(currentOutstandingQty) ? absoluteSlQuantity : currentOutstandingQty);
-                slOrder.account(DEFAULT_TRADING_ACCOUNT_NUMBER);
-                slOrder.transmit(true);
-                bracketOrderList.add(slOrder);
-                if(!slQuantity.equals(currentOutstandingQty)){
-                    LOGGER.error("Outstanding Qty [{}] does not match with SL Quantity [{}]. Using quantity [{}] for SL order", currentOutstandingQty, absoluteSlQuantity, slOrder.totalQuantity());
-                }
+        if(currentSequenceId != null && currentSequenceId != -1) {
+            slOrder = new Order();
+            Double absoluteSlQuantity = Math.abs(slQuantity);
+//                if(isFirstOrderOfTrade){
+//                    slOrder.parentId(order.orderId());
+//                }
+            slOrder.action(slOrderEntity == null ? ("BUY".equalsIgnoreCase(action) ? "SELL" : "BUY") : slOrderEntity.getOrderAction());
+            double updatedSlOrderPrice = ("SELL".equalsIgnoreCase(slOrder.getAction()) && latestLTP < roundedSlPrice) || ("BUY".equalsIgnoreCase(slOrder.getAction()) && latestLTP > roundedSlPrice) ? latestLTP : roundedSlPrice;
+            slOrder.orderId(isFirstOrderOfTrade || slOrderEntity == null ? getBaseService().getNextOrderId() : slOrderEntity.getOrderId());
+            slOrder.orderType(OrderType.STP_LMT);
+            slOrder.auxPrice(updatedSlOrderPrice);
+            slOrder.lmtPrice(updatedSlOrderPrice);
+            slOrder.tif(Types.TimeInForce.GTC);
+            slOrder.outsideRth(true);
+            slOrder.hidden(true);
+            slOrder.totalQuantity(Double.valueOf(0).equals(currentOutstandingQty) ? absoluteSlQuantity : currentOutstandingQty);
+            slOrder.account(DEFAULT_TRADING_ACCOUNT_NUMBER);
+            slOrder.transmit(true);
+            bracketOrderList.add(slOrder);
+            if(!slQuantity.equals(currentOutstandingQty)){
+                LOGGER.error("Outstanding Qty [{}] does not match with SL Quantity [{}]. Using quantity [{}] for SL order [{}]", currentOutstandingQty, absoluteSlQuantity, slOrder.totalQuantity(), slOrder.orderId());
+            }
 
-                LOGGER.info("Placing STOP-LOSS order with id [{}], stop loss [{}], and quantity [{}] for ticker [{}]", slOrder.orderId(), roundedSlPrice, slOrder.totalQuantity(), ticker);
-                try {
-                    eClientSocket.placeOrder(slOrder.orderId(), contract, slOrder);
-                } catch (Exception ex) {
-                    LOGGER.error("Placing STOP-LOSS order with id [{}], stop loss [{}], and quantity [{}] for ticker [{}]", slOrder.orderId(), roundedSlPrice, slOrder.totalQuantity(), ticker);
-                }
+            try {
+                LOGGER.info("Creating STOP-LOSS order with id [{}], stop loss [{}], and quantity [{}] for ticker [{}]", slOrder.orderId(), roundedSlPrice, slOrder.totalQuantity(), ticker);
+                eClientSocket.placeOrder(slOrder.orderId(), contract, slOrder);
+            } catch (Exception ex) {
+                LOGGER.error("Error while placing STOP-LOSS order with id [{}], stop loss [{}], and quantity [{}] for ticker [{}]", slOrder.orderId(), roundedSlPrice, slOrder.totalQuantity(), ticker);
             }
         }
         return bracketOrderList;
@@ -1391,16 +1392,16 @@ public class OrderServiceImpl implements OrderService {
 
 
         LOGGER.info("**** Updating quantity for order with id [{}]", newQtyOrder.orderId());
-        LOGGER.info("action=[{}]", newQtyOrder.action());
-        LOGGER.info("orderType=[{}]", newQtyOrder.getOrderType());
-        LOGGER.info("aux price (sl trigger price)=[{}]", newQtyOrder.auxPrice());
-        LOGGER.info("lmt price (sl lmt price)=[{}]", newQtyOrder.lmtPrice());
-        LOGGER.info("tif=[{}]", newQtyOrder.getTif());
-        LOGGER.info("outsideRth=[{}]", newQtyOrder.outsideRth());
-        LOGGER.info("hidden=[{}]", newQtyOrder.hidden());
-        LOGGER.info("total quantity=[{}]", newQtyOrder.totalQuantity());
-        LOGGER.info("account=[{}]", newQtyOrder.account());
-        LOGGER.info("transmit=[{}]", newQtyOrder.transmit());
+//        LOGGER.info("action=[{}]", newQtyOrder.action());
+//        LOGGER.info("orderType=[{}]", newQtyOrder.getOrderType());
+//        LOGGER.info("aux price (sl trigger price)=[{}]", newQtyOrder.auxPrice());
+//        LOGGER.info("lmt price (sl lmt price)=[{}]", newQtyOrder.lmtPrice());
+//        LOGGER.info("tif=[{}]", newQtyOrder.getTif());
+//        LOGGER.info("outsideRth=[{}]", newQtyOrder.outsideRth());
+//        LOGGER.info("hidden=[{}]", newQtyOrder.hidden());
+//        LOGGER.info("total quantity=[{}]", newQtyOrder.totalQuantity());
+//        LOGGER.info("account=[{}]", newQtyOrder.account());
+//        LOGGER.info("transmit=[{}]", newQtyOrder.transmit());
 
 
         try {
@@ -1476,7 +1477,11 @@ public class OrderServiceImpl implements OrderService {
         orderEntity.setOrderType(order.orderType().getApiString());
         orderEntity.setOrderAction(order.getAction());
         orderEntity.setQuantity(order.totalQuantity());
-        orderEntity.setTransactionPrice(OrderType.STP.getApiString().equalsIgnoreCase(order.orderType().getApiString()) ? order.auxPrice() : order.lmtPrice());
+        if(OrderType.MKT.getApiString().equalsIgnoreCase(order.orderType().getApiString())){
+            orderEntity.setTransactionPrice(0d);
+        } else {
+            orderEntity.setTransactionPrice(OrderType.STP.getApiString().equalsIgnoreCase(order.orderType().getApiString()) ? order.auxPrice() : order.lmtPrice());
+        }
         if (OrderType.STP.getApiString().equalsIgnoreCase(order.orderType().getApiString()) || OrderType.STP_LMT.getApiString().equalsIgnoreCase(order.orderType().getApiString())) {
             orderEntity.setStopLossTriggerPrice(order.auxPrice());
         }
@@ -1616,7 +1621,7 @@ public class OrderServiceImpl implements OrderService {
 
             List<OrderEntity> inactiveOrders = orders.stream().filter(order -> "Cancelled".equalsIgnoreCase(order.getOrderStatus())).collect(Collectors.toList());
 
-            LOGGER.info("Deleting {} inactive orders", inactiveOrders.size());
+            LOGGER.info("Deleting {} orders with Cancelled status", inactiveOrders.size());
 
             List<OrderEntity> childOrders = inactiveOrders.stream().filter(order -> order.getParentOrder() != null || order.getParentOcaOrder() != null).collect(Collectors.toList());
 
