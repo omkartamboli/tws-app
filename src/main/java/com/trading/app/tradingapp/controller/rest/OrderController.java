@@ -9,7 +9,6 @@ import com.trading.app.tradingapp.service.OrderService;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
-import java.util.Date;
 
 
 @RestController
@@ -88,61 +87,25 @@ public class OrderController {
 
     @PostMapping("/otstartradeForPostman")
     @ResponseBody
-    public CreateSetOrderResponseDto CreateOTStarTradeOrderForPostman(@RequestBody OtStarTradeOrderRequestDto otStarTradeOrderRequestDto){
+    public CreateSetOrderResponseDto createOTStarTradeOrderForPostman(@RequestBody OtStarTradeOrderRequestDto otStarTradeOrderRequestDto){
         return orderService.createOTSOrder(otStarTradeOrderRequestDto, OT_STAR_ORDER);
     }
 
     @PostMapping("/otmacdtrade")
     public void CreateOTMacdTradeOrder(@RequestBody OTMacdOrderRequestDto otMacdOrderRequestDto) throws Exception {
-        if(Long.valueOf(-1).equals(otMacdOrderRequestDto.getTradeStartSequenceId())){
-            return;
-        }
-        otMacdOrderRequestDto = updateQuantitiesAsPerContract(otMacdOrderRequestDto);
-        String ticker = otMacdOrderRequestDto.getTicker().replace("1!", "");
-        orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + ticker + "_" + otMacdOrderRequestDto.getInterval() + "_MIN_" + otMacdOrderRequestDto.getTradeStartSequenceId());
+        orderService.createOTMacdOrder(otMacdOrderRequestDto, getMacdOrderTrigger(otMacdOrderRequestDto));
     }
 
     @PostMapping("/otmacdtradeForPostman")
-    public CreateSetOrderResponseDto CreateOTMacdTradeOrderForPostman(@RequestBody OTMacdOrderRequestDto otMacdOrderRequestDto) throws Exception {
-        if(Long.valueOf(-1).equals(otMacdOrderRequestDto.getTradeStartSequenceId())){
-            return null;
-        }
-        otMacdOrderRequestDto = updateQuantitiesAsPerContract(otMacdOrderRequestDto);
-        String ticker = otMacdOrderRequestDto.getTicker().replace("1!", "");
-        return orderService.createOTMacdOrder(otMacdOrderRequestDto, OT_MACD_ORDER + "_" + ticker + "_" + otMacdOrderRequestDto.getInterval() + "_MIN_" + otMacdOrderRequestDto.getTradeStartSequenceId());
+    public CreateSetOrderResponseDto createOTMacdTradeOrderForPostman(@RequestBody OTMacdOrderRequestDto otMacdOrderRequestDto) throws Exception {
+        return orderService.createOTMacdOrder(otMacdOrderRequestDto, getMacdOrderTrigger(otMacdOrderRequestDto));
     }
 
-    private OTMacdOrderRequestDto updateQuantitiesAsPerContract(OTMacdOrderRequestDto otMacdOrderRequestDto){
-        if(null  == otMacdOrderRequestDto){
-            return null;
-        } else {
-            if(null != otMacdOrderRequestDto.getQuantity()){
-                otMacdOrderRequestDto.setQuantity(getQuantityForTicker(otMacdOrderRequestDto.getQuantity(), otMacdOrderRequestDto.getTicker()));
-            }
-
-            if(null != otMacdOrderRequestDto.getSlQuantity()){
-                otMacdOrderRequestDto.setSlQuantity(getQuantityForTicker(otMacdOrderRequestDto.getSlQuantity().intValue(), otMacdOrderRequestDto.getTicker()).doubleValue());
-            }
-            return otMacdOrderRequestDto;
-        }
+    private String getNormalizedTickerName(String ticker) {
+        return ticker == null ? "" : ticker.replace("1!", "");
     }
 
-    private Integer getQuantityForTicker(Integer quantity, String ticker) {
-        if(null == ticker || null == quantity) {
-            return quantity;
-        } else {
-            if(ticker.equalsIgnoreCase("MNQ1!") || ticker.equalsIgnoreCase("MNQ")){
-                return quantity / 2;
-            } else if(ticker.equalsIgnoreCase("MES1!") || ticker.equalsIgnoreCase("MES")){
-                return quantity / 5;
-            } else if(ticker.equalsIgnoreCase("NQ1!") || ticker.equalsIgnoreCase("NQ")){
-                return quantity / 20;
-            } else if(ticker.equalsIgnoreCase("ES1!") || ticker.equalsIgnoreCase("ES")){
-                return quantity / 50;
-            } else {
-                return quantity;
-            }
-        }
-
+    private String getMacdOrderTrigger(OTMacdOrderRequestDto otMacdOrderRequestDto) {
+        return OT_MACD_ORDER + "_" + getNormalizedTickerName(otMacdOrderRequestDto.getTicker()) + "_" + otMacdOrderRequestDto.getInterval() + "_MIN_" + otMacdOrderRequestDto.getTradeStartSequenceId();
     }
 }

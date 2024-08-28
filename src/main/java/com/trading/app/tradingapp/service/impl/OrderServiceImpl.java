@@ -400,6 +400,10 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public CreateSetOrderResponseDto createOTMacdOrder(OTMacdOrderRequestDto otMacdOrderRequestDto, String orderTrigger) throws Exception{
         // Date start = new Date();
+        if(Long.valueOf(-1).equals(otMacdOrderRequestDto.getTradeStartSequenceId())){
+            return null;
+        }
+        otMacdOrderRequestDto = updateQuantitiesAsPerContract(otMacdOrderRequestDto);
 
         if (!"BUY".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType()) && !"SELL".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType())) {
             LOGGER.error(ORDER_TYPE_INVALID_MESSAGE);
@@ -446,17 +450,22 @@ public class OrderServiceImpl implements OrderService {
             cancelAllUnfilledNonSLOrdersForCurrentTrade(otMacdOrderRequestDto, orderTrigger, ticker);
         }
 
-        try {
-            double tradePrice = roundOff(otMacdOrderRequestDto.getEntry(), otMacdOrderRequestDto.getTicker());
-            double latestLTP = getLtpForTicker(ticker);
 
+        try {
+            double latestLTP = -1.0d;
+            double tradePrice = roundOff(otMacdOrderRequestDto.getEntry(), otMacdOrderRequestDto.getTicker());
             try {
+                ContractEntity latestContractEntityState = getLatestDataFromContractEntity(ticker);
+                latestLTP = latestContractEntityState.getLtp();
                 // For Exit orders, set tradePrice as LTP if latest LTP is available for ticker in DB, for better execution success.
                 if(isExitOrder) {
                     // Set tradePrice as LTP if latest LTP is available for ticker in DB.
-                    if (("BUY".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType()) && latestLTP > tradePrice) || ("SELL".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType()) && latestLTP < tradePrice)) {
-                        tradePrice = latestLTP;
-                        LOGGER.info("Updating transaction price for order [{}] with latest LTP [{}]", otMacdOrderRequestDto.getSequenceId(), latestLTP);
+                    if ("BUY".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType())){
+                        tradePrice = latestContractEntityState.getLastAsk();
+                        LOGGER.info("Updating transaction price for order [{}] with latest ask [{}]", otMacdOrderRequestDto.getSequenceId(), tradePrice);
+                    } else if (("SELL".equalsIgnoreCase(otMacdOrderRequestDto.getOrderType()))){
+                        tradePrice = latestContractEntityState.getLastBid();
+                        LOGGER.info("Updating transaction price for order [{}] with latest bid [{}]", otMacdOrderRequestDto.getSequenceId(), tradePrice);
                     }
                 }
             } catch (Exception ex) {
@@ -490,41 +499,6 @@ public class OrderServiceImpl implements OrderService {
                     persistMacdOrder(orderList.get(1), contract, orderTrigger, otMacdOrderRequestDto.getInterval(), false, null, null, null, otMacdOrderRequestDto.getTradeStartSequenceId().toString(), otMacdOrderRequestDto.getOtsOrderType(), otMacdOrderRequestDto.getTradeStartSequenceId(), otMacdOrderRequestDto.getTradeStartSequenceId());
                 }
             }
-
-            // LOGGER.info("OTS-Create Order API execution time is [{}] ms", end.getTime() - start.getTime());
-//            int counter = 0;
-//            int retryCount = isExitOrder ? 30 : 5;
-//            while (counter < retryCount) {
-//                try {
-//
-//                    // Clear entities fetched previously
-//                    entityManager.clear();
-//
-//                    OrderEntity orderEntity = getSingleOrderByOrderId(orderId);
-//                    int filledQty = orderEntity.getFilled() == null ? 0 : orderEntity.getFilled().intValue();
-//                    if (filledQty == otMacdOrderRequestDto.getQuantity()) {
-//                        if (counter > 0) {
-//                            LOGGER.info("Filled order in LTP reset retry no [{}]", counter);
-//                        }
-//                        return getSuccessCreateSetOrderResult(orderList.stream().map(Order::orderId).collect(Collectors.toList()));
-//                    } else {
-//                        double latestLTP = getLtpForTicker(ticker);
-//
-//                        // Update transaction price only if LTP have moved away from order transaction price unfavourably
-//                        if( ("BUY".equalsIgnoreCase(orderEntity.getOrderAction()) && latestLTP > orderEntity.getTransactionPrice()) || ("SELL".equalsIgnoreCase(orderEntity.getOrderAction()) && latestLTP < orderEntity.getTransactionPrice())) {
-//                            Order updateOrder = updateOrderTransactionPrice(orderEntity, latestLTP);
-//                            eClientSocket.placeOrder(updateOrder.orderId(), contract, updateOrder);
-//                            LOGGER.info("Loop: Updating transaction price for order [{}] with latest LTP [{}]", updateOrder.orderId(), latestLTP);
-//                        }
-//                        counter++;
-//                        Thread.sleep(5000);
-//                    }
-//                } catch (Exception ex) {
-//                    LOGGER.warn("Exception while updating order transaction price for order [{}] in counter loop. Exception : [{}]", orderId, ex.getMessage());
-//                    Thread.sleep(5000);
-//                    counter++;
-//                }
-//            }
             return getSuccessCreateSetOrderResult(orderList.stream().map(Order::orderId).collect(Collectors.toList()));
         } catch (Exception ex) {
             LOGGER.error("Could not place a OT-MACD order.", ex);
@@ -1252,7 +1226,7 @@ public class OrderServiceImpl implements OrderService {
         parent.tif(Types.TimeInForce.GTC);
         parent.outsideRth(true);
         parent.account(getTradingAccount());
-        //The parent and children orders will need this attribute set to false to prevent accidental executions.
+        //The parent and children orders will need this attribute set as false, to prevent accidental executions.
         //The LAST CHILD will have it set to true.
         parent.transmit(false);
 
@@ -1286,9 +1260,12 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private List<Order> createMacdOrders(EClientSocket eClientSocket, Contract contract , int orderId,  String action, double quantity, Double slQuantity, OrderEntity slOrderEntity, double tradePrice, double slPrice, double latestLTP, boolean isFirstOrderOfTrade, Long tradeStartSequenceId, Long currentSequenceId, String ticker, String orderTrigger, String interval) throws Exception{
+        if(latestLTP == -1.0d){
+            latestLTP = tradePrice;
+            LOGGER.error(">>> *** >>> LTP is not available for ticker [{}], using trade price instead of LTP. trade price [{}]", contract.symbol(), tradePrice);
+        }
 
         Double currentOutstandingQty = (double) Math.abs(findOutstandingQtyForTickerWithSpecificOrderTrigger(ticker, orderTrigger, interval));
-
         double roundedSlPrice = roundOff(Math.abs(slPrice), ticker);
         boolean slOverShot = (null != slOrderEntity) && (roundedSlPrice != 0d) && (("SELL".equalsIgnoreCase(slOrderEntity.getOrderAction()) && latestLTP < roundedSlPrice) || ("BUY".equalsIgnoreCase(slOrderEntity.getOrderAction()) && latestLTP > roundedSlPrice));
 
@@ -1645,6 +1622,10 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private Double getLtpForTicker(String ticker) throws Exception {
+        return getLatestDataFromContractEntity(ticker).getLtp();
+    }
+
+    private ContractEntity getLatestDataFromContractEntity(String ticker) throws Exception {
         // Clear entities fetched previously
         entityManager.clear();
         List<ContractEntity> contractEntityList = getContractRepository().findBySymbol(ticker.replace(CME_FUTURES_SUFFIX, EMPTY_STRING));
@@ -1654,12 +1635,47 @@ public class OrderServiceImpl implements OrderService {
                 if (contractEntity.getTickerAskBidLtpValuesUpdateTimestamp() == null || (new Date().getTime() - contractEntity.getTickerAskBidLtpValuesUpdateTimestamp().getTime()) > 5000) {
                     throw new Exception("Stale LTP data for contract entity [ " + ticker + " ]");
                 }
-                return contractEntity.getLtp();
+                return contractEntity;
             }
         }
         String error = "Contract entity [ " + ticker + " ] not found in database";
         throw new IllegalArgumentException(error);
     }
+
+    private OTMacdOrderRequestDto updateQuantitiesAsPerContract(OTMacdOrderRequestDto otMacdOrderRequestDto){
+        if(null  == otMacdOrderRequestDto){
+            return null;
+        } else {
+            if(null != otMacdOrderRequestDto.getQuantity()){
+                otMacdOrderRequestDto.setQuantity(getQuantityForTicker(otMacdOrderRequestDto.getQuantity(), otMacdOrderRequestDto.getTicker()));
+            }
+
+            if(null != otMacdOrderRequestDto.getSlQuantity()){
+                otMacdOrderRequestDto.setSlQuantity(getQuantityForTicker(otMacdOrderRequestDto.getSlQuantity().intValue(), otMacdOrderRequestDto.getTicker()).doubleValue());
+            }
+            return otMacdOrderRequestDto;
+        }
+    }
+
+    private Integer getQuantityForTicker(Integer quantity, String ticker) {
+        if(null == ticker || null == quantity) {
+            return quantity;
+        } else {
+            if(ticker.equalsIgnoreCase("MNQ1!") || ticker.equalsIgnoreCase("MNQ")){
+                return quantity / 2;
+            } else if(ticker.equalsIgnoreCase("MES1!") || ticker.equalsIgnoreCase("MES")){
+                return quantity / 5;
+            } else if(ticker.equalsIgnoreCase("NQ1!") || ticker.equalsIgnoreCase("NQ")){
+                return quantity / 20;
+            } else if(ticker.equalsIgnoreCase("ES1!") || ticker.equalsIgnoreCase("ES")){
+                return quantity / 50;
+            } else {
+                return quantity;
+            }
+        }
+
+    }
+
 
     public BaseService getBaseService() {
         return baseService;

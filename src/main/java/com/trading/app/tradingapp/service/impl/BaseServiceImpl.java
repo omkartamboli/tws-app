@@ -560,11 +560,17 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         // String fieldName = LTP_FIELD == field ? "LTP" : (ASK_FIELD == field ? "ASK" : (BID_FIELD == field ? "BID" : ""+field));
         // LOGGER.info("Tick Price data: Ticker Id:{}, Field: {}, Price: {}, CanAutoExecute: {}, pastLimit: {}, pre-open: {}", tickerId, fieldName, price, attribs.canAutoExecute(), attribs.pastLimit(), attribs.preOpen());
 
-        if (field == LTP_FIELD) {
+        if (field == LTP_FIELD || field == ASK_FIELD || field == BID_FIELD) {
             // LOGGER.info("Updated LTP received for tracker: Ticker Id:{}, Price: {}", tickerId, price);
             ContractEntity contractEntity = getContractByTickerId(tickerId);
             if (null != contractEntity) {
-                contractEntity.setLtp(price);
+                if(field == LTP_FIELD) {
+                    contractEntity.setLtp(price);
+                } else if(field == ASK_FIELD) {
+                    contractEntity.setLastAsk(price);
+                } else {
+                    contractEntity.setLastBid(price);
+                }
                 contractEntity.setTickerAskBidLtpValuesUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
                 // persist new LTP and timestamp
                 updateContractEntity(contractEntity);
@@ -578,7 +584,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 //                    }
 //                }
             } else {
-                LOGGER.warn("Received LTP for invalid tickerId {}", tickerId);
+                LOGGER.warn("Received ticker data for invalid tickerId {}", tickerId);
             }
         }
 
