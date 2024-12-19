@@ -29,15 +29,19 @@ public interface BaseService {
 
     Contract createOptionsContract(String ticker, Double strike, String dateYYYYMMDD, String callOrPut);
 
+    Contract createFutureOptionsContract(String ticker, Double strike, String dateYYYYMMDD, String callOrPut, ContractEntity contractEntity);
+
     ContractDetails getOptionsChainContract(String ticker, String dateYYYYMMDD);
 
-    Contract createOptionsStraddleContract(String ticker, Double strike, String dateYYYYMMDD, OrderType orderType);
-
     ContractEntity createContractEntity(Contract contract);
+
+    Contract createOptionsStraddleContract(String ticker, Double strike, String dateYYYYMMDD, OrderType orderType, boolean isFutOpt, ContractEntity contractEntity);
 
     ContractEntity getContractByTickerSymbol(String tickerSymbol);
 
     void transmitOrder(Order order, String ticker, boolean transmitFla);
+
+    void setOrderStatusAsCancelled(int orderId);
 
     OrderEntity updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice);
 }

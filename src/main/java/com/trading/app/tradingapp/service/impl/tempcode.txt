@@ -1,0 +1,285 @@
+
+                        // **************************************************************************************************************//
+                        // ************************ CREATING MAIN ORDER *****************************************************************//
+                        // **************************************************************************************************************//
+                        LOGGER.info("Creating Main order for OT Range Break order [{}]", otRangeBreakOrderRequestDto.getEntryId());
+                        Order parent = new Order();
+                        parent.orderId(orderId);
+                        parent.action(action);
+                        parent.orderType(com.ib.client.OrderType.LMT);
+                        parent.hidden(true);
+                        parent.totalQuantity(quantity);
+
+                        // parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(tradePrice));
+                        parent.lmtPrice(roundOffDoubleForPriceDecimalFormat(ltp));
+
+                        parent.tif(Types.TimeInForce.DAY);
+                        parent.outsideRth(true);
+                        parent.account(getTradingAccount());
+                        parent.transmit(false);
+                        orderList.add(parent);
+
+                        // **************************************************************************************************************//
+                        // ************************ CREATING SL ORDER *****************************************************************//
+                        // **************************************************************************************************************//
+                        LOGGER.info("Creating SL order for OT Range Break order [{}]", otRangeBreakOrderRequestDto.getEntryId());
+                        Order stopLoss = new Order();
+                        stopLoss.orderId(orderId + 1);
+                        stopLoss.parentId(orderId);
+                        stopLoss.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+                        stopLoss.orderType(OrderType.STP_LMT);
+
+                        //stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+                        //stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+                        stopLoss.auxPrice(action.equalsIgnoreCase("BUY") ? ltp - 100 : ltp + 100);
+                        stopLoss.lmtPrice(action.equalsIgnoreCase("BUY") ? ltp - 100 : ltp + 100);
+
+                        stopLoss.tif(Types.TimeInForce.GTC);
+                        stopLoss.outsideRth(true);
+                        stopLoss.hidden(true);
+                        stopLoss.totalQuantity(quantity);
+                        stopLoss.account(getTradingAccount());
+                        stopLoss.transmit(false);
+                        orderList.add(stopLoss);
+
+                        // **************************************************************************************************************//
+                        // ************************ CREATING TRAILING TP ORDER **********************************************************//
+                        // **************************************************************************************************************//
+                        LOGGER.info("Creating Trailing TP order for OT Range Break order [{}]", otRangeBreakOrderRequestDto.getEntryId());
+                        Order trailingTP = new Order();
+                        trailingTP.parentId(orderId);
+                        trailingTP.orderId(orderId + 2);
+                        trailingTP.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+                        trailingTP.orderType(OrderType.TRAIL_LIMIT);
+
+                        //Stop trigger price
+//                        trailingTP.auxPrice(tpTrailingAmount);
+//                        trailingTP.lmtPriceOffset(0.0d);
+//                        trailingTP.trailStopPrice(tpTrailTrigger);
+//                        trailingTP.triggerMethod(Types.TriggerMethod.Last);
+
+                        trailingTP.auxPrice(100);
+                        trailingTP.lmtPriceOffset(30.0d);
+                        trailingTP.trailStopPrice(action.equalsIgnoreCase("BUY") ? ltp + 20 : ltp - 20);
+                        trailingTP.triggerMethod(Types.TriggerMethod.Last);
+
+                        trailingTP.tif(Types.TimeInForce.GTC);
+                        trailingTP.outsideRth(true);
+                        trailingTP.hidden(true);
+                        trailingTP.totalQuantity(quantity);
+                        trailingTP.account(getTradingAccount());
+                        trailingTP.transmit(true);
+                        orderList.add(trailingTP);
+
+
+                        // Code to add pricing condition on the order
+
+//                        //Conditions have to be created via the OrderCondition.Create
+//                        PriceCondition priceCondition = (PriceCondition)OrderCondition.create(OrderConditionType.Price);
+//                        //When this contract...
+//                        priceCondition.conId(contractId);
+//                        LOGGER.error("Expected conid = [654503320], Actual conid is = [{}]", contract.conid());
+//
+//                        //traded on this exchange
+//                        priceCondition.exchange(contract.exchange());
+//                        //has a price above/below
+//                        priceCondition.isMore(action.equalsIgnoreCase("BUY"));
+//                        //this quantity
+//                        priceCondition.price(tpTrailTrigger);
+//                        //trigger type
+//                        priceCondition.triggerMethod(Types.TriggerMethod.Last.val());
+//                        trailingTP.conditions().add(priceCondition);
+
+
+
+                         // **************************************************************************************************************//
+                        // ************************ CREATING TRAILING TP ORDER **********************************************************//
+                        // **************************************************************************************************************//
+                        LOGGER.info("Creating Trailing TP order for OT Range Break order [{}]", otRangeBreakOrderRequestDto.getEntryId());
+                        Order trailingTP = new Order();
+                        trailingTP.parentId(orderId);
+                        trailingTP.orderId(orderId + 2);
+                        trailingTP.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+                        trailingTP.orderType(OrderType.TRAIL_LIT);
+
+                        //Stop trigger price
+//                        trailingTP.auxPrice(tpTrailingAmount);
+//                        trailingTP.lmtPriceOffset(0.0d);
+//                        trailingTP.trailStopPrice(tpTrailTrigger);
+//                        trailingTP.triggerMethod(Types.TriggerMethod.Last);
+
+                        trailingTP.auxPrice(100.0d);
+                        trailingTP.lmtPriceOffset(-100.0d);
+                        trailingTP.trailStopPrice(action.equalsIgnoreCase("BUY") ? ltp + 2 : ltp - 2);
+                        trailingTP.triggerMethod(Types.TriggerMethod.Last);
+
+                        trailingTP.tif(Types.TimeInForce.GTC);
+                        trailingTP.outsideRth(true);
+                        trailingTP.hidden(true);
+                        trailingTP.totalQuantity(quantity);
+                        trailingTP.account(getTradingAccount());
+                        trailingTP.transmit(true);
+                        orderList.add(trailingTP);
+
+
+                        // **************************************************************************************************************//
+                        // ************************ CREATING SL ORDER, WHICH CHANGES TO TRAIL AFTER TRIGGER PRICE ***********************//
+                        // **************************************************************************************************************//
+
+                        LOGGER.info("Creating Adjusting SL order for OT Range Break order [{}]", otRangeBreakOrderRequestDto.getEntryId());
+                        Order stopLossOrder = new Order();
+                        stopLossOrder.orderId(orderId + 1);
+                        stopLossOrder.parentId(orderId);
+                        stopLossOrder.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+                        stopLossOrder.orderType(OrderType.STP_LMT);
+                        //stopLossOrder.auxPrice(stopLossPrice);
+                        //stopLossOrder.lmtPrice(stopLossPrice);
+                        double slOffset = action.equalsIgnoreCase("BUY") ? ltp - 100 : ltp + 100;
+                        stopLossOrder.auxPrice(slOffset);
+                        stopLossOrder.lmtPrice(slOffset);
+                        stopLossOrder.totalQuantity(quantity);
+                        stopLossOrder.tif(Types.TimeInForce.GTC);
+                        stopLossOrder.outsideRth(true);
+                        stopLossOrder.hidden(true);
+                        stopLossOrder.account(getTradingAccount());
+                        stopLossOrder.transmit(true);
+
+//                        stopLossOrder.triggerPrice(tpTrailTrigger);
+//                        stopLossOrder.triggerMethod(Types.TriggerMethod.Last);
+//                        stopLossOrder.adjustedOrderType(OrderType.TRAIL);
+//                        stopLossOrder.adjustedStopPrice(tpTrailTrigger);
+//                        stopLossOrder.adjustableTrailingUnit(0);
+//                        stopLossOrder.adjustedTrailingAmount(tpTrailingAmount);
+
+                        stopLossOrder.triggerPrice(action.equalsIgnoreCase("BUY") ? ltp + 10 : ltp - 10);
+                        stopLossOrder.triggerMethod(Types.TriggerMethod.Last);
+                        stopLossOrder.adjustedOrderType(OrderType.TRAIL);
+                        stopLossOrder.adjustedStopPrice(slOffset);
+                        stopLossOrder.adjustableTrailingUnit(0);
+                        stopLossOrder.adjustedTrailingAmount(tpTrailingAmount);
+
+                        orderList.add(stopLossOrder);
+
+
+
+
+
+
+
+
+                        // **************************************************************************************************************//
+                        // ************************ CREATING TRAILING TP ORDER **********************************************************//
+                        // **************************************************************************************************************//
+                        LOGGER.info("Creating Adjusting SL order for OT Range Break order [{}]", otRangeBreakOrderRequestDto.getEntryId());
+                        Order tpTrailingOrder = new Order();
+                        tpTrailingOrder.orderId(orderId + 2);
+                        tpTrailingOrder.parentId(orderId);
+                        tpTrailingOrder.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+                        tpTrailingOrder.orderType(OrderType.TRAIL_LIMIT);
+                        //stopLossOrder.auxPrice(stopLossPrice);
+                        //stopLossOrder.lmtPrice(stopLossPrice);
+                        double slOffset = action.equalsIgnoreCase("BUY") ? ltp - 100 : ltp + 100;
+                        double tpOffset = action.equalsIgnoreCase("BUY") ? ltp + 100 : ltp - 100;
+
+
+                        tpTrailingOrder.auxPrice(100);
+                        tpTrailingOrder.lmtPriceOffset(100);
+                        tpTrailingOrder.trailStopPrice(slOffset);
+
+                        tpTrailingOrder.totalQuantity(quantity);
+                        tpTrailingOrder.tif(Types.TimeInForce.GTC);
+                        tpTrailingOrder.outsideRth(true);
+                        tpTrailingOrder.hidden(true);
+                        tpTrailingOrder.account(getTradingAccount());
+                        tpTrailingOrder.transmit(true);
+
+                        tpTrailingOrder.triggerPrice(action.equalsIgnoreCase("BUY") ? ltp + 5 : ltp - 5);
+                        tpTrailingOrder.triggerMethod(Types.TriggerMethod.Last);
+                        tpTrailingOrder.adjustedTrailingAmount(50);
+                        tpTrailingOrder.adjustableTrailingUnit(0);
+                        tpTrailingOrder.adjustedStopPrice(action.equalsIgnoreCase("BUY") ? ltp + 5 : ltp - 5);
+
+                        orderList.add(tpTrailingOrder);
+
+
+
+
+
+
+                        // **************************************************************************************************************//
+                        // ************************ CREATING SL ORDER *****************************************************************//
+                        // **************************************************************************************************************//
+                        LOGGER.info("Creating SL order for OT Range Break order [{}]", otRangeBreakOrderRequestDto.getEntryId());
+                        Order stopLoss = new Order();
+                        stopLoss.orderId(orderId + 1);
+                        stopLoss.parentId(orderId);
+                        stopLoss.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+                        stopLoss.orderType(OrderType.STP_LMT);
+
+                        //stopLoss.auxPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+                        //stopLoss.lmtPrice(roundOffDoubleForPriceDecimalFormat(stopLossPrice));
+                        stopLoss.auxPrice(action.equalsIgnoreCase("BUY") ? ltp - 100 : ltp + 100);
+                        stopLoss.lmtPrice(action.equalsIgnoreCase("BUY") ? ltp - 100 : ltp + 100);
+
+                        stopLoss.tif(Types.TimeInForce.GTC);
+                        stopLoss.outsideRth(true);
+                        stopLoss.hidden(true);
+                        stopLoss.totalQuantity(quantity);
+                        stopLoss.account(getTradingAccount());
+                        stopLoss.transmit(false);
+                        orderList.add(stopLoss);
+
+                        // **************************************************************************************************************//
+                        // ************************ CREATING TRAILING TP ORDER **********************************************************//
+                        // **************************************************************************************************************//
+                        LOGGER.info("Creating TP Trail order for OT Range Break order [{}]", otRangeBreakOrderRequestDto.getEntryId());
+                        Order tpTrailingOrder = new Order();
+                        tpTrailingOrder.orderId(orderId + 2);
+                        tpTrailingOrder.parentId(orderId);
+                        tpTrailingOrder.action(action.equalsIgnoreCase("BUY") ? "SELL" : "BUY");
+                        tpTrailingOrder.orderType(OrderType.TRAIL);
+                        //stopLossOrder.auxPrice(stopLossPrice);
+                        //stopLossOrder.lmtPrice(stopLossPrice);
+                        double slOffset = action.equalsIgnoreCase("BUY") ? ltp - 100 : ltp + 100;
+                        double tpOffset = action.equalsIgnoreCase("BUY") ? ltp + 100 : ltp - 100;
+
+
+                        tpTrailingOrder.auxPrice(100);
+                        tpTrailingOrder.lmtPriceOffset(100);
+                        tpTrailingOrder.trailStopPrice(slOffset);
+
+                        tpTrailingOrder.totalQuantity(quantity);
+                        tpTrailingOrder.tif(Types.TimeInForce.GTC);
+                        tpTrailingOrder.outsideRth(true);
+                        tpTrailingOrder.hidden(true);
+                        tpTrailingOrder.account(getTradingAccount());
+                        tpTrailingOrder.transmit(false);
+                        orderList.add(tpTrailingOrder);
+
+                        // **************************************************************************************************************//
+                        // ************************ CREATING TRAILING TP ADJUST ORDER **********************************************************//
+                        // **************************************************************************************************************//
+
+                        Order tpTrailingAdjustOrder = new Order();
+                        tpTrailingAdjustOrder.orderId(orderId + 3);
+                        tpTrailingAdjustOrder.parentId(tpTrailingOrder.orderId());
+                        tpTrailingAdjustOrder.action(action);
+                        tpTrailingAdjustOrder.orderType(OrderType.STP_LMT);
+                        tpTrailingAdjustOrder.auxPrice(action.equalsIgnoreCase("BUY") ? ltp + 100 : ltp - 100);
+                        tpTrailingAdjustOrder.lmtPrice(action.equalsIgnoreCase("BUY") ? ltp + 100 : ltp - 100);
+
+                        tpTrailingAdjustOrder.totalQuantity(quantity);
+                        tpTrailingAdjustOrder.tif(Types.TimeInForce.GTC);
+                        tpTrailingAdjustOrder.outsideRth(true);
+                        tpTrailingAdjustOrder.hidden(true);
+                        tpTrailingAdjustOrder.account(getTradingAccount());
+                        tpTrailingAdjustOrder.transmit(true);
+
+                        tpTrailingAdjustOrder.triggerPrice(action.equalsIgnoreCase("BUY") ? ltp + 5 : ltp - 5);
+                        tpTrailingAdjustOrder.triggerMethod(Types.TriggerMethod.Last);
+                        tpTrailingAdjustOrder.adjustedTrailingAmount(50);
+                        tpTrailingAdjustOrder.adjustableTrailingUnit(0);
+                        tpTrailingAdjustOrder.adjustedOrderType(OrderType.TRAIL);
+                        tpTrailingAdjustOrder.adjustedStopPrice(ltp);
+
+                        orderList.add(tpTrailingAdjustOrder);

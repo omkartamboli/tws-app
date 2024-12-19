@@ -9,6 +9,7 @@ import com.trading.app.tradingapp.service.OrderService;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import java.util.Date;
 
 
 @RestController
@@ -29,6 +30,8 @@ public class OrderController {
     private static final String OT_STAR_ORDER = "Automated Order - OT_STAR_ORDER";
 
     private static final String OT_MACD_ORDER = "Automated Order - OT_MACD_ORDER";
+
+    private static final String OT_RANGE_BREAK_ORDER = "Automated Order - OT_RANGE_BREAK_ORDER";
 
     private static final String RKL_TRADE = "Automated Order - RKL_TRADE";
 
@@ -101,11 +104,31 @@ public class OrderController {
         return orderService.createOTMacdOrder(otMacdOrderRequestDto, getMacdOrderTrigger(otMacdOrderRequestDto));
     }
 
+    @PostMapping("/otrangebreaktrade")
+    public void CreateOTRangeBreakTradeOrder(@RequestBody OTRangeBreakOrderRequestDto otRangeBreakOrderRequestDto) throws Exception {
+        orderService.createOTRangeBreakOrder(otRangeBreakOrderRequestDto, getRangeBreakOrderTrigger(otRangeBreakOrderRequestDto));
+    }
+
+    @PostMapping("/otrangebreaktradeForPostman")
+    public CreateSetOrderResponseDto CreateOTRangeBreakTradeOrderForPostman(@RequestBody OTRangeBreakOrderRequestDto otRangeBreakOrderRequestDto) throws Exception {
+        return orderService.createOTRangeBreakOrder(otRangeBreakOrderRequestDto, getRangeBreakOrderTrigger(otRangeBreakOrderRequestDto));
+    }
+
     private String getNormalizedTickerName(String ticker) {
-        return ticker == null ? "" : ticker.replace("1!", "");
+        return ticker == null ? "" : ticker.replaceAll("\\d+!", "");
     }
 
     private String getMacdOrderTrigger(OTMacdOrderRequestDto otMacdOrderRequestDto) {
         return OT_MACD_ORDER + "_" + getNormalizedTickerName(otMacdOrderRequestDto.getTicker()) + "_" + otMacdOrderRequestDto.getInterval() + "_MIN_" + otMacdOrderRequestDto.getTradeStartSequenceId();
+    }
+
+    private String getRangeBreakOrderTrigger(OTRangeBreakOrderRequestDto otRangeBreakOrderRequestDto) {
+        if(null == otRangeBreakOrderRequestDto.getInterval() || "".equals(otRangeBreakOrderRequestDto.getInterval())){
+            otRangeBreakOrderRequestDto.setInterval("15");
+        }
+        if(null == otRangeBreakOrderRequestDto.getTime() || "".equals(otRangeBreakOrderRequestDto.getTime())){
+            otRangeBreakOrderRequestDto.setTime(new Date().toString());
+        }
+        return OT_RANGE_BREAK_ORDER + "_" + getNormalizedTickerName(otRangeBreakOrderRequestDto.getTicker()) + "_" + otRangeBreakOrderRequestDto.getInterval() + "_MIN_" + otRangeBreakOrderRequestDto.getEntryId();
     }
 }

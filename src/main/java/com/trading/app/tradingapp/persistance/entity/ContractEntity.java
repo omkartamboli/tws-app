@@ -28,6 +28,8 @@ public class ContractEntity {
 
     private Double ltp;
 
+    private Integer contractId;
+
     private Double lastAsk;
 
     private Double lastBid;
@@ -85,6 +87,14 @@ public class ContractEntity {
 
     public void setLtp(Double ltp) {
         this.ltp = ltp;
+    }
+
+    public Integer getContractId() {
+        return contractId;
+    }
+
+    public void setContractId(Integer contractId) {
+        this.contractId = contractId;
     }
 
     public String getCurrency() {

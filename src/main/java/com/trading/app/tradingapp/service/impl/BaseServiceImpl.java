@@ -7,21 +7,25 @@ import com.trading.app.tradingapp.dto.OptionType;
 import com.trading.app.tradingapp.dto.response.MarketDataDto;
 import com.trading.app.tradingapp.persistance.entity.ContractEntity;
 import com.trading.app.tradingapp.persistance.entity.OrderEntity;
+import com.trading.app.tradingapp.persistance.entity.TriggerOrderEntity;
 import com.trading.app.tradingapp.persistance.repository.ContractRepository;
 import com.trading.app.tradingapp.persistance.repository.OrderRepository;
+import com.trading.app.tradingapp.persistance.repository.TriggerOrderRepository;
 import com.trading.app.tradingapp.service.BaseService;
 import com.trading.app.tradingapp.service.ContractService;
 import com.trading.app.tradingapp.service.OrderService;
 import com.trading.app.tradingapp.service.SystemConfigService;
+import com.trading.app.tradingapp.util.ProcessTriggerOrderThread;
 import com.trading.app.tradingapp.util.RequestMarketDataThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.hibernate.Session;
 
 import javax.annotation.Resource;
-import javax.persistence.EntityManager;
+import javax.persistence.*;
 import javax.transaction.Transactional;
 import java.util.*;
 import java.util.concurrent.TimeoutException;
@@ -42,6 +46,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     private static final String SECURITY_TYPE = "STK";
 
     public static final String OPTIONS_TYPE = "OPT";
+
+    public static final String FUTURE_OPTIONS_TYPE = "FOP";
 
     public static final String STRADDLE_TYPE = "BAG";
 
@@ -85,6 +91,17 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     protected static final int HALF_MINUTE_OFFSET = 30000; // 1 sec
 
+    private static final String TRIGGER_ORDER_QUERY_STRING = "select to                                                  " +
+            "from TriggerOrderEntity as to                                                                                " +
+            "where to.symbol = :symbol                                                                                    " +
+            "and to.orderId = -1                                                                                          " +
+            "and    (                                                                                                     " +
+            "           (to.orderTriggerPrice < :ltp and to.orderType = 'STP LMT' and to.orderAction = 'BUY')         or  " +
+            "           (to.orderTriggerPrice > :ltp and to.orderType = 'STP LMT' and to.orderAction = 'SELL')        or  " +
+            "           (to.orderTriggerPrice < :ltp and to.orderType = 'TRAIL LIMIT' and to.orderAction = 'SELL')    or  " +
+            "           (to.orderTriggerPrice > :ltp and to.orderType = 'TRAIL LIMIT' and to.orderAction = 'BUY')         " +
+            "       )                                                                                                     ";
+
     @Value("${tws.api.port}")
     private String apiPort;
 
@@ -112,14 +129,32 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     @Resource
     private OrderService orderService;
 
+    @Resource
+    private TriggerOrderRepository triggerOrderRepository;
+
+    @PersistenceUnit
+    private EntityManagerFactory entityManagerFactory;
+
+    private final HashSet<Long> previouslyPlacedTriggeredOrdersInTWS = new HashSet<>();
+
+    private boolean canCreateTWSOrderForThisTriggerOrder(Long triggerOrderPk) {
+        if (previouslyPlacedTriggeredOrdersInTWS.contains(triggerOrderPk)) {
+            return false;
+        } else {
+            previouslyPlacedTriggeredOrdersInTWS.add(triggerOrderPk);
+            return true;
+        }
+    }
+
     public BaseServiceImpl() {
         eReaderSignal = new EJavaSignal();
         eClientSocket = new EClientSocket(this, eReaderSignal);
     }
 
-    private void logLine(){
+    private void logLine() {
         LOGGER.info("____________________________________________________________________________________________________\n");
     }
+
     @Override
     public void setupNewConnection() throws Exception {
         LOGGER.info("Creating TWS connection .....");
@@ -128,7 +163,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         LOGGER.info("Params:");
         LOGGER.info("[tws.api.host]=[{}]", getApiHost());
         LOGGER.info("[tws.api.port]=[{}]", getApiPort());
-        LOGGER.info("[tws.api.clientId]=[{}]",getApiClientId());
+        LOGGER.info("[tws.api.clientId]=[{}]", getApiClientId());
         logLine();
 
         eClientSocket.eConnect(DEFAULT_API_HOST, DEFAULT_API_PORT, DEFAULT_API_CLIENT_ID);
@@ -181,7 +216,9 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public synchronized int getNextOrderId() throws Exception {
+        //LOGGER.info("getting next order ID .....");
         EClientSocket eClientSocket = getConnection();
+
         setNextTWSOrderId(-1);
         eClientSocket.reqIds(-1);
         while (getNextTWSOrderId() < 0) {
@@ -257,7 +294,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     public Contract createContract(String ticker) {
 
         Optional<ContractEntity> contractEntity = getContractRepository().findById(ticker);
-        if(contractEntity.isPresent() && Types.SecType.FUT.name().equalsIgnoreCase(contractEntity.get().getSecType())){
+        if (contractEntity.isPresent() && Types.SecType.FUT.name().equalsIgnoreCase(contractEntity.get().getSecType())) {
             return createFuturesContract(ticker, contractEntity.get().getNextFutDate());
         } else {
             Contract contract = new Contract();
@@ -272,7 +309,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public Contract createFuturesContract(String ticker, String lastTradeDateOrContractMonth) {
-        Contract contract =  new FutContract(ticker,"202409");
+        Contract contract = new FutContract(ticker, (lastTradeDateOrContractMonth == null || lastTradeDateOrContractMonth.isEmpty()) ? "202412" : lastTradeDateOrContractMonth);
         contract.exchange("CME");
         return contract;
     }
@@ -288,8 +325,38 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         contract.strike(strike);
         contract.lastTradeDateOrContractMonth(dateYYYYMMDD);
         contract.right(callOrPut);
-
         return contract;
+    }
+
+    @Override
+    public Contract createFutureOptionsContract(String ticker, Double strike, String dateYYYYMMDD, String callOrPut, ContractEntity contractEntity) {
+        Contract contract = new Contract();
+        contract.symbol(ticker);
+        contract.secType(FUTURE_OPTIONS_TYPE);
+        contract.currency(CURRENCY);
+        contract.exchange(SMART_EXCHANGE);
+        contract.strike(strike);
+        contract.lastTradeDateOrContractMonth(dateYYYYMMDD);
+        contract.right(callOrPut);
+        contract.multiplier(getFutureOptionContractMultiplier(ticker));
+        contract.tradingClass("NQ");
+        return contract;
+    }
+
+    private String getFutureOptionContractMultiplier(String ticker) {
+        if (null == ticker || ticker.isEmpty()) {
+            return MULTIPLIER_100;
+        } else if (ticker.startsWith("NQ")) {
+            return "20";
+        } else if (ticker.startsWith("MNQ")) {
+            return "2";
+        } else if (ticker.startsWith("ES")) {
+            return "50";
+        } else if (ticker.startsWith("MES")) {
+            return "5";
+        } else {
+            return MULTIPLIER_100;
+        }
     }
 
     @Override
@@ -313,7 +380,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     }
 
     @Override
-    public Contract createOptionsStraddleContract(String ticker, Double strike, String dateYYYYMMDD, com.trading.app.tradingapp.dto.OrderType orderType) {
+    public Contract createOptionsStraddleContract(String ticker, Double strike, String dateYYYYMMDD, com.trading.app.tradingapp.dto.OrderType orderType, boolean isFutOpt, ContractEntity contractEntity) {
 
         Contract straddleContract = new Contract();
         straddleContract.symbol(ticker);
@@ -327,14 +394,14 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
         int timeAsInt = Math.toIntExact(System.currentTimeMillis() % MILLIS_IN_DAY);
 
-        Contract callContract = createOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.CALL.toString());
+        Contract callContract = isFutOpt ? createFutureOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.CALL.toString(), contractEntity) : createOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.CALL.toString());
         eClientSocket.reqContractDetails(timeAsInt, callContract);
         callContract.conid(getOptionsContractDetails(timeAsInt).conid());
 
-        Contract putContract = createOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.PUT.toString());
+        Contract putContract = isFutOpt ? createFutureOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.PUT.toString(), contractEntity) : createOptionsContract(ticker, strike, dateYYYYMMDD, OptionType.PUT.toString());
         eClientSocket.reqContractDetails(timeAsInt + 1, putContract);
 
-        putContract.conid(getOptionsContractDetails(timeAsInt+1).conid());
+        putContract.conid(getOptionsContractDetails(timeAsInt + 1).conid());
 
         ComboLeg callLeg = new ComboLeg();
         callLeg.conid(callContract.conid());
@@ -354,7 +421,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         return straddleContract;
     }
 
-    private ContractDetails getOptionsContractDetails(int requestId){
+    private ContractDetails getOptionsContractDetails(int requestId) {
         try {
             while (getContractDetailsMap().get(requestId) == null) {
                 Thread.sleep(10);
@@ -364,7 +431,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             getContractDetailsMap().remove(requestId);
             return contractDetails;
 
-        } catch (InterruptedException ie){
+        } catch (InterruptedException ie) {
             return null;
         }
     }
@@ -408,6 +475,17 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     }
 
     @Override
+    public void setOrderStatusAsCancelled(int orderId) {
+        Optional<OrderEntity> orderEntityOptional = getOrderRepository().findById(orderId);
+        if (orderEntityOptional.isPresent()) {
+            OrderEntity orderEntity = orderEntityOptional.get();
+            orderEntity.setOrderStatus(CANCELLED_STATUS);
+            orderEntity.setStatusUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
+            getOrderRepository().saveAndFlush(orderEntity);
+        }
+    }
+
+    @Override
     public OrderEntity updateOrderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, String whyHeld, double mktCapPrice) {
         Optional<OrderEntity> orderEntityOptional = getOrderRepository().findById(orderId);
         if (orderEntityOptional.isPresent()) {
@@ -420,10 +498,10 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             orderEntity.setMktCapPrice(mktCapPrice);
             orderEntity.setWhyHeld(whyHeld);
 
-            if(CANCELLED_STATUS.equalsIgnoreCase(status)){
+            if (CANCELLED_STATUS.equalsIgnoreCase(status)) {
                 LOGGER.info("Order status is CANCELLED");
             }
-            if(FILLED_STATUS.equalsIgnoreCase(status)) {
+            if (FILLED_STATUS.equalsIgnoreCase(status)) {
                 // Set Realized PNL, if any of the child orders are filled completely
                 if (null != orderEntity.getParentOrder()) {
                     OrderEntity parentOrderEntity = orderEntity.getParentOrder();
@@ -442,7 +520,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
                     if (!CollectionUtils.isEmpty(ocaOrders)) {
                         LOGGER.warn("Transmitting OCA orders >> " + ocaOrders.size());
-                        ocaOrders.forEach(ocaOrderEntity -> transmitOrder(prepareOrderForTransmit(ocaOrderEntity, filled), ocaOrderEntity.getSymbol(),true));
+                        ocaOrders.forEach(ocaOrderEntity -> transmitOrder(prepareOrderForTransmit(ocaOrderEntity, filled), ocaOrderEntity.getSymbol(), true));
                     }
                 }
             }
@@ -455,14 +533,14 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     }
 
 
-    private Order prepareOrderForTransmit(OrderEntity orderEntity, double filledQty){
+    private Order prepareOrderForTransmit(OrderEntity orderEntity, double filledQty) {
         Order transmitOrder = new Order();
         transmitOrder.orderId(orderEntity.getOrderId());
         transmitOrder.action(orderEntity.getOrderAction());
         transmitOrder.orderType(orderEntity.getOrderType());
         transmitOrder.hidden(true);
         transmitOrder.totalQuantity(filledQty * (orderEntity.getOcaHedgeMultiplier() == null ? 1 : orderEntity.getOcaHedgeMultiplier()));
-        if("STP".equalsIgnoreCase(orderEntity.getOrderType())){
+        if ("STP".equalsIgnoreCase(orderEntity.getOrderType())) {
             transmitOrder.auxPrice(roundOffDoubleForPriceDecimalFormat(orderEntity.getStopLossTriggerPrice()));
         } else {
             transmitOrder.lmtPrice(roundOffDoubleForPriceDecimalFormat(orderEntity.getTransactionPrice()));
@@ -470,15 +548,15 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         transmitOrder.tif(Types.TimeInForce.GTC);
         transmitOrder.outsideRth(true);
         transmitOrder.account(getTradingAccount());
-        transmitOrder.ocaGroup("OCA_"+orderEntity.getParentOcaOrder().getOrderId());
+        transmitOrder.ocaGroup("OCA_" + orderEntity.getParentOcaOrder().getOrderId());
         transmitOrder.ocaType(1);
 
         return transmitOrder;
     }
 
-    public void transmitOrder(Order order, String ticker, boolean transmitFlag){
+    public void transmitOrder(Order order, String ticker, boolean transmitFlag) {
         order.transmit(transmitFlag);
-        LOGGER.warn("Transmitting order with ID >>" +order.orderId());
+        LOGGER.warn("Transmitting order with ID >>" + order.orderId());
         eClientSocket.placeOrder(order.orderId(), createContract(ticker), order);
     }
 
@@ -557,16 +635,17 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public void tickPrice(int tickerId, int field, double price, TickAttrib attribs) {
-        // String fieldName = LTP_FIELD == field ? "LTP" : (ASK_FIELD == field ? "ASK" : (BID_FIELD == field ? "BID" : ""+field));
-        // LOGGER.info("Tick Price data: Ticker Id:{}, Field: {}, Price: {}, CanAutoExecute: {}, pastLimit: {}, pre-open: {}", tickerId, fieldName, price, attribs.canAutoExecute(), attribs.pastLimit(), attribs.preOpen());
+        //String fieldName = LTP_FIELD == field ? "LTP" : (ASK_FIELD == field ? "ASK" : (BID_FIELD == field ? "BID" : ""+field));
+        //LOGGER.info("Tick Price data: Ticker Id:{}, Field: {}, Price: {}, CanAutoExecute: {}, pastLimit: {}, pre-open: {}", tickerId, fieldName, price, attribs.canAutoExecute(), attribs.pastLimit(), attribs.preOpen());
 
         if (field == LTP_FIELD || field == ASK_FIELD || field == BID_FIELD) {
             // LOGGER.info("Updated LTP received for tracker: Ticker Id:{}, Price: {}", tickerId, price);
             ContractEntity contractEntity = getContractByTickerId(tickerId);
             if (null != contractEntity) {
-                if(field == LTP_FIELD) {
+                if (field == LTP_FIELD) {
                     contractEntity.setLtp(price);
-                } else if(field == ASK_FIELD) {
+                    processTriggerOrders(contractEntity.getSymbol(), price);
+                } else if (field == ASK_FIELD) {
                     contractEntity.setLastAsk(price);
                 } else {
                     contractEntity.setLastBid(price);
@@ -574,6 +653,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
                 contractEntity.setTickerAskBidLtpValuesUpdateTimestamp(new java.sql.Timestamp(new Date().getTime()));
                 // persist new LTP and timestamp
                 updateContractEntity(contractEntity);
+
 
                 // update LTP in the runner
 //                if (getContractService().getTickerSequenceTrackerMap() != null) {
@@ -612,6 +692,59 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             }
         }
     }
+
+    public void processTriggerOrders(String symbol, double price) {
+        List<TriggerOrderEntity> triggerOrderList = getTriggerOrderRepository().findTriggeredOrdersForTicker(symbol, price);
+        if (!triggerOrderList.isEmpty()) {
+            LOGGER.info("!!!!!!!!!!!!!!!!!!!!!!!! ---->    1 Found [{}] triggered orders for symbol [{}] at price [{}]", triggerOrderList.size(), symbol, price);
+            Contract contract = createContract(symbol);
+            for (TriggerOrderEntity triggerOrder : triggerOrderList) {
+                if (canCreateTWSOrderForThisTriggerOrder(triggerOrder.getPk())) {
+                    ProcessTriggerOrderThread processTriggerOrderThread = new ProcessTriggerOrderThread("ProcessTriggerOrderThread - " + triggerOrder.getSequenceId(), triggerOrder.getPk(), getOrderService(), contract, triggerOrder);
+                    processTriggerOrderThread.start();
+                } else {
+                    LOGGER.info("Actual TWS order already created for trigger order with pk [{}]", triggerOrder.getPk());
+                }
+            }
+        }
+//        else {
+//            LOGGER.info("No triggered orders found for symbol [{}] at price [{}]", symbol, price);
+//        }
+    }
+
+//    @Transactional
+//    public List<TriggerOrderEntity> findTriggeredOrdersForTicker(String symbol, Double price){
+//        EntityTransaction tx = null;
+//        boolean txSuccess = false;
+//        List<TriggerOrderEntity> result = new ArrayList<>();
+//
+//        try {
+//           // session = em.unwrap(Session.class);
+//            EntityManager em = entityManagerFactory.createEntityManager();
+//            tx = em.getTransaction();
+//            tx.begin();
+//
+//            Query query = em.createQuery(TRIGGER_ORDER_QUERY_STRING);
+//            query.setParameter("symbol", symbol);
+//            query.setParameter("ltp", price);
+//            //query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
+//            result.addAll(query.getResultList());
+//            txSuccess = true;
+//        } catch (Exception ex){
+//            LOGGER.error("Error while getting transaction", ex);
+//        }
+//        finally {
+//            if(null != tx) {
+//                if (!txSuccess) {
+//                    tx.rollback();
+//                } else {
+//                    tx.commit();
+//                }
+//            }
+//        }
+//        return result;
+//    }
+
 
     @Override
     public void tickSize(int tickerId, int field, int size) {
@@ -660,13 +793,13 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 //            });
 
             // Update SL order quantity based on original order Fill status
-            if(null != orderToUpdate && null != orderToUpdate.getTradeStartSequenceId()){
+            if (null != orderToUpdate && null != orderToUpdate.getTradeStartSequenceId()) {
                 OrderEntity slOrder = getOrderService().getSingleOrderBySlCheckSequenceIdAndTrigger(orderToUpdate.getTradeStartSequenceId(), orderToUpdate.getOrderTrigger());
-                if(null != slOrder && slOrder.getOrderId() != null && slOrder.getOrderId() != orderId ){
+                if (null != slOrder && slOrder.getOrderId() != null && slOrder.getOrderId() != orderId) {
                     double currentOutstandingQty = Math.abs(getOrderService().findOutstandingQtyForTickerWithSpecificOrderTrigger(orderToUpdate.getSymbol(), orderToUpdate.getOrderTrigger(), orderToUpdate.getOrderTriggerInterval()));
 
                     // If new quantity for SL order  is zero then cancel SL order, else change quantity to new quantity
-                    if(currentOutstandingQty == 0){
+                    if (currentOutstandingQty == 0) {
                         LOGGER.info("Cancelling the SL order with OrderId=[{}], as the outstanding qty of original trade is 0, so SL order is not needed.", slOrder.getOrderId());
                         getOrderService().cancelOrder(slOrder.getOrderId());
                     } else {
@@ -675,9 +808,19 @@ public class BaseServiceImpl implements BaseService, EWrapper {
                     }
                 } else if (null != slOrder && slOrder.getOrderId() != null && slOrder.getOrderId() == orderId) {
                     double currentOutstandingQtyForSlOrder = slOrder.getQuantity() - slOrder.getFilled();
-                    if(0 == currentOutstandingQtyForSlOrder && slOrder.getFilled() > 0){
+                    if (0 == currentOutstandingQtyForSlOrder && slOrder.getFilled() > 0) {
                         LOGGER.info("Received FULLY FILLED status update for SL order [{}]. Cancelling all other non filled non SL orders", slOrder.getOrderId());
                         getOrderService().cancelAllUnfilledNonSLOrdersForCurrentTrade(slOrder.getOrderTriggerInterval(), slOrder.getTradeStartSequenceId(), slOrder.getOrderTrigger(), slOrder.getSymbol());
+                    }
+                }
+            }
+
+            if (null != orderToUpdate) {
+                List<TriggerOrderEntity> triggerOrderEntityList = getTriggerOrderRepository().findByParentOrderAndActive(orderToUpdate, Boolean.FALSE);
+                if (null != triggerOrderEntityList && !triggerOrderEntityList.isEmpty()) {
+                    for (TriggerOrderEntity triggerOrderEntity : triggerOrderEntityList) {
+                        triggerOrderEntity.setActive(Boolean.TRUE);
+                        getTriggerOrderRepository().saveAndFlush(triggerOrderEntity);
                     }
                 }
             }
@@ -723,7 +866,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     @Override
     public void contractDetails(int reqId, ContractDetails contractDetails) {
-        LOGGER.info("Fetched contract details for request id {}",reqId);
+        LOGGER.info("Fetched contract details for request id {}", reqId);
         getContractDetailsMap().put(reqId, contractDetails);
     }
 
@@ -880,31 +1023,31 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     @Override
     public void error(Exception e) {
 
-        LOGGER.error("Error : ",e);
+        LOGGER.error("Error : ", e);
     }
 
     @Override
     public void error(String str) {
-        LOGGER.error("Error : "+str);
+        LOGGER.error("Error : " + str);
     }
 
     @Override
     public void error(int id, int errorCode, String errorMsg) {
 
-        if(errorCode == 2104 || errorCode == 2106 || errorCode == 2158){
+        if (errorCode == 2104 || errorCode == 2106 || errorCode == 2158) {
             // ignore these error codes as they are not real errors.
             return;
         }
-        if(errorCode != 2109 || !errorMsg.startsWith("Order Event Warning:Attribute 'Outside Regular Trading Hours' is ignored") ){
-            LOGGER.error("Error : id="+id+" code="+errorCode+" msg="+errorMsg);
+        if (errorCode != 2109 || !errorMsg.startsWith("Order Event Warning:Attribute 'Outside Regular Trading Hours' is ignored")) {
+            LOGGER.error("Error : id=" + id + " code=" + errorCode + " msg=" + errorMsg);
         }
 
-        if(errorCode == 10148 && !errorMsg.contains("state: Cancelled")){
+        if (errorCode == 10148 && !errorMsg.contains("state: Cancelled")) {
             LOGGER.error("*** >>> *** >>> Cancelling order with id [{}] failed. Attempting to cancel order again.", id);
             getOrderService().cancelOrder(id);
         }
 
-        if(errorCode == 507 || errorCode == 2110 || errorCode == 1100 || errorCode == 504){
+        if (errorCode == 507 || errorCode == 2110 || errorCode == 1100 || errorCode == 504) {
             LOGGER.error("The connection with TWS client is interrupted!!");
             restartSpringBootApplication();
         }
@@ -918,7 +1061,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
             LOGGER.info("Initiating Disconnect !!");
             eClientSocket.eDisconnect();
             TradingAppApplication.restart();
-        }catch (Exception ex){
+        } catch (Exception ex) {
             LOGGER.error("Exception while waiting to reconnect with TWS client", ex);
         }
     }
@@ -1139,5 +1282,21 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     public void setOrderService(OrderService orderService) {
         this.orderService = orderService;
+    }
+
+    public TriggerOrderRepository getTriggerOrderRepository() {
+        return triggerOrderRepository;
+    }
+
+    public void setTriggerOrderRepository(TriggerOrderRepository triggerOrderRepository) {
+        this.triggerOrderRepository = triggerOrderRepository;
+    }
+
+    public EntityManagerFactory getEntityManagerFactory() {
+        return entityManagerFactory;
+    }
+
+    public void setEntityManagerFactory(EntityManagerFactory entityManagerFactory) {
+        this.entityManagerFactory = entityManagerFactory;
     }
 }

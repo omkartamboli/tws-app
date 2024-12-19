@@ -8,6 +8,8 @@ public class CreateSetOrderResponseDto {
 
     Integer slOrderId;
 
+    Integer tpTrailAdjustOrderId;
+
     Boolean status;
 
     String error;
@@ -50,5 +52,13 @@ public class CreateSetOrderResponseDto {
 
     public void setError(String error) {
         this.error = error;
+    }
+
+    public Integer getTpTrailAdjustOrderId() {
+        return tpTrailAdjustOrderId;
+    }
+
+    public void setTpTrailAdjustOrderId(Integer tpTrailAdjustOrderId) {
+        this.tpTrailAdjustOrderId = tpTrailAdjustOrderId;
     }
 }

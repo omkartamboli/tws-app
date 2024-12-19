@@ -9,6 +9,7 @@ import com.trading.app.tradingapp.dto.response.CreateOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.CreateSetOrderResponseDto;
 import com.trading.app.tradingapp.dto.response.UpdateSetOrderResponseDto;
 import com.trading.app.tradingapp.persistance.entity.OrderEntity;
+import com.trading.app.tradingapp.persistance.entity.TriggerOrderEntity;
 
 import java.util.List;
 
@@ -29,6 +30,8 @@ public interface OrderService {
     CreateSetOrderResponseDto createOrder(RKLTradeOrderRequestDto rklTradeOrderRequestDto, String orderTrigger);
 
     CreateSetOrderResponseDto createOTMacdOrder(OTMacdOrderRequestDto otMacdOrderRequestDto, String orderTrigger) throws Exception;
+
+    CreateSetOrderResponseDto createOTRangeBreakOrder(OTRangeBreakOrderRequestDto otRangeBreakOrderRequestDto, String orderTrigger) throws Exception;
 
     CreateSetOrderResponseDto createOTSOrder(OtStarTradeOrderRequestDto otStarTradeOrderRequestDto, String orderTrigger);
 
@@ -51,4 +54,8 @@ public interface OrderService {
     OrderEntity persistMacdOrder(Order order, Contract contract, String orderTrigger, String orderTriggerInterval, boolean waitForOrdersToBeCreated, List<OrderEntity> ocaOrders, OrderEntity parentOcaOrder, Integer hedgeQtyMultiplier, String sequenceId, String otsOrderType, Long tradeStartSequenceId, Long slCheckSequenceId);
 
     void cleanOrderState();
+
+    void createTrailingTPOrderFromTriggerOrder(TriggerOrderEntity triggerOrder, Contract contract) throws Exception;
+
+    void createSLOrderFromTriggerOrder(TriggerOrderEntity triggerOrder, Contract contract) throws Exception;
 }
