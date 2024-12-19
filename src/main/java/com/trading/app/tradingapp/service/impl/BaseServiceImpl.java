@@ -81,6 +81,8 @@ public class BaseServiceImpl implements BaseService, EWrapper {
 
     private static final String FILLED_STATUS = "Filled";
 
+    private static final String SUBMITTED_STATUS = "Submitted";
+
     private static final String CANCELLED_STATUS = "Cancelled";
 
     private Map<Integer, ContractDetails> contractDetailsMap = new HashMap<>();
@@ -696,7 +698,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
     public void processTriggerOrders(String symbol, double price) {
         List<TriggerOrderEntity> triggerOrderList = getTriggerOrderRepository().findTriggeredOrdersForTicker(symbol, price);
         if (!triggerOrderList.isEmpty()) {
-            LOGGER.info("!!!!!!!!!!!!!!!!!!!!!!!! ---->    1 Found [{}] triggered orders for symbol [{}] at price [{}]", triggerOrderList.size(), symbol, price);
+            LOGGER.info("Found [{}] triggered orders for symbol [{}] at price [{}]", triggerOrderList.size(), symbol, price);
             Contract contract = createContract(symbol);
             for (TriggerOrderEntity triggerOrder : triggerOrderList) {
                 if (canCreateTWSOrderForThisTriggerOrder(triggerOrder.getPk())) {
@@ -706,6 +708,7 @@ public class BaseServiceImpl implements BaseService, EWrapper {
                     LOGGER.info("Actual TWS order already created for trigger order with pk [{}]", triggerOrder.getPk());
                 }
             }
+            LOGGER.info("List of triggered orders processed successfully so far [{}]", previouslyPlacedTriggeredOrdersInTWS);
         }
 //        else {
 //            LOGGER.info("No triggered orders found for symbol [{}] at price [{}]", symbol, price);
@@ -776,7 +779,10 @@ public class BaseServiceImpl implements BaseService, EWrapper {
         //LOGGER.info("Got order status for order: [{}]", orderId);
         //LOGGER.info("Data: status:[{}], filled:[{}], remaining:[{}], avgFillPrice:[{}], parent order id:[{}], clientId:[{}], mktCapPrice:[{}], whyHeld:[{}]", status, filled, remaining, avgFillPrice, parentId, clientId, mktCapPrice, whyHeld);
         OrderEntity orderToUpdate = updateOrderStatus(orderId, status, filled, remaining, avgFillPrice, whyHeld, mktCapPrice);
-        LOGGER.info("Order status is updated in the database for order: [{}]. Status: [{}]", orderId, status);
+
+        if(!SUBMITTED_STATUS.equals(status)) {
+            LOGGER.info("Order status is updated in the database for order: [{}]. Status: [{}]", orderId, status);
+        }
 
         // If order is Filled
         if (FILLED_STATUS.equalsIgnoreCase(status)) {

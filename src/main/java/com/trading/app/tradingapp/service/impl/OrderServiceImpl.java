@@ -441,7 +441,7 @@ public class OrderServiceImpl implements OrderService {
                 // Synchronizing the order creation block to avoid creating orders with duplicate order ID
                 synchronized (this) {
                     try {
-                        LOGGER.info("Creating bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], stopLossTrailingAmount=[{}], interval=[{}]", orderTrigger, orderId, otRangeBreakOrderRequestDto.getOrderType(), quantity, tradePrice, tpTrailingAmount, otRangeBreakOrderRequestDto.getInterval());
+                        //LOGGER.info("Creating bracket order with orderTrigger [{}], parentOrderId=[{}], type=[{}], quantity=[{}], limitPrice=[{}], stopLossTrailingAmount=[{}], interval=[{}]", orderTrigger, orderId, otRangeBreakOrderRequestDto.getOrderType(), quantity, tradePrice, tpTrailingAmount, otRangeBreakOrderRequestDto.getInterval());
 
                         // **************************************************************************************************************//
                         // ************************ CREATING MAIN ORDER *****************************************************************//
@@ -514,7 +514,8 @@ public class OrderServiceImpl implements OrderService {
         triggerOrderForSL.setOrderTriggerPrice(stopLossPrice);
         triggerOrderForSL.setParentOrder(parentOrderEntity);
         triggerOrderForSL.setSymbol(parentOrderEntity.getSymbol());
-        triggerOrderForSL.setSequenceId(otRangeBreakOrderRequestDto.getEntryId());
+        triggerOrderForSL.setSequenceId(orderTrigger);
+        triggerOrderForSL.setOrderTriggerInterval(otRangeBreakOrderRequestDto.getInterval());
         triggerOrderForSL.setTransactionPrice(stopLossPrice);
         triggerOrderForSL.setOriginalQuantity(otRangeBreakOrderRequestDto.getQty());
         triggerOrderForSL.setFilledQuantity(0);
@@ -529,7 +530,8 @@ public class OrderServiceImpl implements OrderService {
         triggerOrderForTrailingTP.setOrderTriggerPrice(tpTrailTrigger);
         triggerOrderForTrailingTP.setParentOrder(parentOrderEntity);
         triggerOrderForTrailingTP.setSymbol(parentOrderEntity.getSymbol());
-        triggerOrderForTrailingTP.setSequenceId(otRangeBreakOrderRequestDto.getEntryId());
+        triggerOrderForTrailingTP.setSequenceId(orderTrigger);
+        triggerOrderForTrailingTP.setOrderTriggerInterval(otRangeBreakOrderRequestDto.getInterval());
         triggerOrderForTrailingTP.setTrailingAmount(tpTrailingAmount);
         triggerOrderForTrailingTP.setOriginalQuantity(otRangeBreakOrderRequestDto.getQty());
         triggerOrderForTrailingTP.setFilledQuantity(0);
@@ -587,7 +589,7 @@ public class OrderServiceImpl implements OrderService {
         trailingTP.totalQuantity(triggerOrder.getOriginalQuantity());
         trailingTP.account(getTradingAccount());
         if (triggerOrder.getParentOrder() != null) {
-            // trailingTP.parentId(triggerOrder.getParentOrder().getOrderId());
+            //trailingTP.parentId(triggerOrder.getParentOrder().getOrderId());
             trailingTP.totalQuantity(triggerOrder.getParentOrder().getFilled());
         }
         trailingTP.transmit(true);
@@ -598,7 +600,8 @@ public class OrderServiceImpl implements OrderService {
         } catch (Exception ex) {
             LOGGER.error("Error while placing TRAILING TP Trigger Order for entry id [{}]", triggerOrder.getSequenceId(), ex);
         }
-        persistOrder(trailingTP, contract, triggerOrder.getSequenceId(), null, false, null, null);
+        persistOrder(trailingTP, contract, triggerOrder.getSequenceId(), triggerOrder.getOrderTriggerInterval(), false, triggerOrder.getSequenceId(), triggerOrder.getOrderAction());
+
 
         TriggerOrderEntity ocaEntity = triggerOrder.getOcaTriggerOrderEntity();
         if (ocaEntity != null) {
@@ -614,10 +617,8 @@ public class OrderServiceImpl implements OrderService {
         LOGGER.info("Getting next order ID for SL order");
         int nextOrderId = getBaseService().getNextOrderId();
         LOGGER.info("Got next order ID for SL order [{}]", nextOrderId);
-        LOGGER.info("Setting trigger order to active false [{}]", triggerOrder.getPk());
         triggerOrder.setOrderId(nextOrderId);
         getTriggerOrderRepository().saveAndFlush(triggerOrder);
-        LOGGER.info("Creating the SL Trigger Order for entry id [{}]", triggerOrder.getSequenceId());
         Order stopLoss = new Order();
         stopLoss.orderId(nextOrderId);
         stopLoss.action(triggerOrder.getOrderAction());
@@ -639,7 +640,7 @@ public class OrderServiceImpl implements OrderService {
         } catch (Exception ex) {
             LOGGER.error("Error while placing SL Trigger Order for entry id [{}]", triggerOrder.getSequenceId(), ex);
         }
-        persistOrder(stopLoss, contract, triggerOrder.getSequenceId(), null, false, null, null);
+        persistOrder(stopLoss, contract, triggerOrder.getSequenceId(), triggerOrder.getOrderTriggerInterval(), false, triggerOrder.getSequenceId(), triggerOrder.getOrderAction());
 
         LOGGER.info("Setting OCA trigger order to active false [{}]", triggerOrder.getPk());
         TriggerOrderEntity ocaEntity = triggerOrder.getOcaTriggerOrderEntity();
@@ -1719,6 +1720,8 @@ public class OrderServiceImpl implements OrderService {
         orderEntity.setQuantity(order.totalQuantity());
         if (OrderType.MKT.getApiString().equalsIgnoreCase(order.orderType().getApiString())) {
             orderEntity.setTransactionPrice(0d);
+        } else if (OrderType.TRAIL_LIMIT.getApiString().equalsIgnoreCase(order.orderType().getApiString())) {
+            orderEntity.setTransactionPrice(order.trailStopPrice());
         } else {
             orderEntity.setTransactionPrice(OrderType.STP.getApiString().equalsIgnoreCase(order.orderType().getApiString()) ? order.auxPrice() : order.lmtPrice());
         }

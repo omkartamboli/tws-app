@@ -126,9 +126,9 @@ public class OrderController {
         if(null == otRangeBreakOrderRequestDto.getInterval() || "".equals(otRangeBreakOrderRequestDto.getInterval())){
             otRangeBreakOrderRequestDto.setInterval("15");
         }
-        if(null == otRangeBreakOrderRequestDto.getTime() || "".equals(otRangeBreakOrderRequestDto.getTime())){
-            otRangeBreakOrderRequestDto.setTime(new Date().toString());
-        }
+//        if(null == otRangeBreakOrderRequestDto.getTime() || "".equals(otRangeBreakOrderRequestDto.getTime())){
+//            otRangeBreakOrderRequestDto.setTime(new Date().toString());
+//        }
         return OT_RANGE_BREAK_ORDER + "_" + getNormalizedTickerName(otRangeBreakOrderRequestDto.getTicker()) + "_" + otRangeBreakOrderRequestDto.getInterval() + "_MIN_" + otRangeBreakOrderRequestDto.getEntryId();
     }
 }

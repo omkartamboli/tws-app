@@ -18,6 +18,9 @@ public class TriggerOrderEntity {
     @Column(nullable = true)
     private String sequenceId;
 
+    @Column(nullable = true)
+    private String orderTriggerInterval;
+
     @Column(nullable = false)
     private String orderType; // LMT, MKT etc.
 
@@ -155,5 +158,13 @@ public class TriggerOrderEntity {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+    public String getOrderTriggerInterval() {
+        return orderTriggerInterval;
+    }
+
+    public void setOrderTriggerInterval(String orderTriggerInterval) {
+        this.orderTriggerInterval = orderTriggerInterval;
     }
 }
