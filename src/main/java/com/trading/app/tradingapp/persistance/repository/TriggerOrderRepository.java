@@ -35,8 +35,8 @@ public interface TriggerOrderRepository extends JpaRepository<TriggerOrderEntity
                 "and    (                                                                                                     " +
                 "           (to.orderTriggerPrice < :ltp and to.orderType = 'STP LMT' and to.orderAction = 'BUY')         or  " +
                 "           (to.orderTriggerPrice > :ltp and to.orderType = 'STP LMT' and to.orderAction = 'SELL')        or  " +
-                "           (to.orderTriggerPrice < :ltp and to.orderType = 'TRAIL LIMIT' and to.orderAction = 'SELL')    or  " +
-                "           (to.orderTriggerPrice > :ltp and to.orderType = 'TRAIL LIMIT' and to.orderAction = 'BUY')         " +
+                "           (to.orderTriggerPrice <= :ltp and to.orderType = 'TRAIL LIMIT' and to.orderAction = 'SELL')   or  " +
+                "           (to.orderTriggerPrice >= :ltp and to.orderType = 'TRAIL LIMIT' and to.orderAction = 'BUY')        " +
                 "       )                                                                                                     ")
     List<TriggerOrderEntity> findTriggeredOrdersForTicker(@Param("symbol")String symbol, @Param("ltp")Double ltp);
 }

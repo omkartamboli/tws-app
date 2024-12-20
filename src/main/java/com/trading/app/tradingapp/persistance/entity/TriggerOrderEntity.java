@@ -5,6 +5,15 @@ import org.hibernate.annotations.ColumnDefault;
 import javax.persistence.*;
 
 @Entity
+@Table(indexes = {
+        @Index(name = "id_index", columnList = "pk", unique = true),
+        @Index(name = "symbol_index", columnList = "symbol"),
+        @Index(name = "active_index", columnList = "active"),
+        @Index(name = "transaction_price_index", columnList = "transactionPrice"),
+        @Index(name = "order_type_index", columnList = "orderType"),
+        @Index(name = "order_action_index", columnList = "orderAction"),
+        @Index(name = "sequence_id_index", columnList = "sequenceId"),
+})
 public class TriggerOrderEntity {
 
     @Column(nullable = false)

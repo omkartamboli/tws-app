@@ -1,11 +1,14 @@
 package com.trading.app.tradingapp.persistance.entity;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
+import javax.persistence.*;
 import java.sql.Timestamp;
 
 @Entity
+@Table(indexes = {
+        @Index(name = "id_index", columnList = "tickerId", unique = true),
+        @Index(name = "symbol_index", columnList = "symbol"),
+        @Index(name = "contract_id_index", columnList = "contractId")
+})
 public class ContractEntity {
 
     @Id

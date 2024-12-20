@@ -5,6 +5,11 @@ import java.sql.Timestamp;
 import java.util.List;
 
 @Entity
+@Table(indexes = {
+        @Index(name = "id_index", columnList = "orderId", unique = true),
+        @Index(name = "symbol_index", columnList = "symbol"),
+        @Index(name = "parent_order_index", columnList = "parent_order_order_id")
+})
 public class OrderEntity {
 
     @Column(nullable = false)
